@@ -110,7 +110,8 @@ async function renderProfile() {
           ${Object.entries(FOOT_LABEL).map(([v, l]) =>
             `<option value="${v}" ${(me.foot || 'derecho') === v ? 'selected' : ''}>${l}</option>`).join('')}
         </select>
-        ${me.email ? `<p class="muted">Email: ${esc(me.email)}</p>` : ''}
+        <label>Email ${me.email ? '' : '(agrégalo para entrar con él)'}</label>
+        <input id="profEmail" type="email" value="${esc(me.email || '')}" placeholder="tu@correo.com">
         <div class="row between" style="margin-top:10px">
           <span class="pill">⭐ Rating: ${me.rating ?? '-'}</span>
           <span class="pill amber">🏆 Puntos: ${me.points || 0}</span>
@@ -172,7 +173,8 @@ async function renderProfile() {
     e.preventDefault();
     try {
       const data = await api('/me', 'PUT', {
-        displayName: $('#profName').value, position: $('#profPosition').value, foot: $('#profFoot').value
+        displayName: $('#profName').value, position: $('#profPosition').value,
+        foot: $('#profFoot').value, email: $('#profEmail').value
       });
       me = data.user;
       $('#userBadge').textContent = me.displayName;

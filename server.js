@@ -97,10 +97,19 @@ app.get('/api/me', requireAuth, (req, res) => {
 });
 
 app.put('/api/me', requireAuth, (req, res) => {
-  const { displayName, position, foot } = req.body || {};
+  const db = load();
+  const { displayName, position, foot, email } = req.body || {};
   if (displayName) req.user.displayName = String(displayName).trim().slice(0, 40);
   if (POSITIONS.includes(position)) req.user.position = position;
   if (FEET.includes(foot)) req.user.foot = foot;
+  if (email !== undefined && String(email).trim()) {
+    const mail = String(email).trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) return res.status(400).json({ error: 'Email inválido' });
+    if (db.users.some(u => u.id !== req.userId && (u.email || '') === mail)) {
+      return res.status(409).json({ error: 'Ese email ya está en uso por otra cuenta' });
+    }
+    req.user.email = mail;
+  }
   save();
   res.json({ user: { ...publicUser(req.user), rating: playerRating(req.user) } });
 });
