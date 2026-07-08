@@ -742,11 +742,19 @@ function pitchHTML(teams) {
       byPos.arquero = [byPos.arquero[0]];
       (byPos.defensa ||= []).unshift(...extra);
     }
+    // Siempre alguien al arco: si no hay arquero, baja un defensa (o medio) como referencia visual
+    if ((!byPos.arquero || !byPos.arquero.length) && team.length > 1) {
+      const src = byPos.defensa?.length ? 'defensa' : byPos.medio?.length ? 'medio' : byPos.delantero?.length ? 'delantero' : null;
+      if (src) {
+        byPos.arquero = [{ ...byPos[src].shift(), _refGK: true }];
+        if (!byPos[src].length) delete byPos[src];
+      }
+    }
     return order.filter(pos => byPos[pos]?.length).map(pos => byPos[pos]);
   };
   const dots = (team, side, color) => {
     const rows = rowsFor(team);
-    const hasGKRow = rows.length > 0 && rows[0][0].position === 'arquero' && rows[0].length === 1;
+    const hasGKRow = rows.length > 0 && rows[0].length === 1 && (rows[0][0].position === 'arquero' || rows[0][0]._refGK);
     const field = hasGKRow ? rows.slice(1) : rows;
     // Arco en x=7; el resto de las líneas se reparte entre 18 y 44
     const rowX = [];
@@ -759,8 +767,8 @@ function pitchHTML(teams) {
         const y = 100 * (i + 1) / (row.length + 1);
         const initials = esc(p.name.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase());
         const firstName = esc(p.name.split(/\s+/)[0]);
-        return `<div class="pdot" style="left:${x.toFixed(1)}%;top:${y.toFixed(1)}%">
-          <span class="circle" style="background:${color}">${initials}</span><span class="pname">${firstName}</span>
+        return `<div class="pdot${p._refGK ? ' ref' : ''}" style="left:${x.toFixed(1)}%;top:${y.toFixed(1)}%">
+          <span class="circle" style="background:${color}">${initials}</span><span class="pname">${firstName}${p._refGK ? ' (ref)' : ''}</span>
         </div>`;
       }).join('');
     }).join('');
