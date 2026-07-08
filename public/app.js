@@ -142,6 +142,11 @@ async function renderProfile() {
         <input id="pointsValue" type="number" min="0" placeholder="Puntos" style="width:110px" required>
         <button class="btn primary">Guardar</button>
       </form>
+      <p class="muted" style="margin:12px 0 6px">Eliminar usuario (se quita de amigos, grupos y partidos; sus partidos jugados quedan como historial):</p>
+      <form id="deleteUserForm" class="row">
+        <input id="deleteUserName" placeholder="Email, usuario o nombre de invitado" style="flex:1" required>
+        <button class="btn danger">Eliminar</button>
+      </form>
     </div>` : ''}`;
   $('#passForm').onsubmit = async e => {
     e.preventDefault();
@@ -158,6 +163,17 @@ async function renderProfile() {
       await api('/admin/reset-password', 'POST', { username: $('#resetUser').value, newPassword: $('#resetPass').value });
       toast('Contraseña reseteada ✓');
       $('#resetUser').value = ''; $('#resetPass').value = '';
+    } catch (err) { toast(err.message, true); }
+  };
+  const df = $('#deleteUserForm');
+  if (df) df.onsubmit = async e => {
+    e.preventDefault();
+    const who = $('#deleteUserName').value.trim();
+    if (!confirm(`¿Eliminar a "${who}"?\nSe quitará de amigos, grupos y partidos pendientes. Esta acción no se puede deshacer.`)) return;
+    try {
+      const r = await api('/admin/delete-user', 'POST', { username: who });
+      toast(`${r.deleted} eliminado 🗑️`);
+      $('#deleteUserName').value = '';
     } catch (err) { toast(err.message, true); }
   };
   const pf = $('#pointsForm');

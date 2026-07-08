@@ -233,6 +233,52 @@ app.post('/api/admin/set-points', requireAuth, (req, res) => {
   res.json({ ok: true, user: userBrief(target) });
 });
 
+// Eliminación en cascada: limpia todas las referencias al usuario
+function deleteUserCascade(db, target) {
+  const uid = target.id;
+  // Sus invitados sin cuenta también se eliminan
+  db.users.filter(u => u.isGuest && u.ownerId === uid).forEach(g => deleteUserCascade(db, g));
+  // Amistades
+  db.friendships = db.friendships.filter(f => f.from !== uid && f.to !== uid);
+  // Grupos: sale de todos; si era dueño, hereda el miembro más antiguo; grupos vacíos se borran
+  db.groups.forEach(g => {
+    g.members = g.members.filter(id => id !== uid);
+    if (g.owner === uid) g.owner = g.members[0] || null;
+  });
+  db.groups = db.groups.filter(g => g.members.length > 0);
+  // Partidos que creó y no se jugaron: se eliminan. Los jugados quedan como historial.
+  db.matches = db.matches.filter(m => !(m.creator === uid && !m.result));
+  db.matches.forEach(m => {
+    m.players = m.players.filter(id => id !== uid);
+    m.invites = m.invites.filter(i => i.userId !== uid);
+    if (m.teams && !m.result) {
+      ['A', 'B'].forEach(s => m.teams[s] = m.teams[s].filter(p => p.id !== uid));
+      const sum = t => +(t.reduce((x, p) => x + (p.rating || 0), 0)).toFixed(2);
+      m.teams.scoreA = sum(m.teams.A);
+      m.teams.scoreB = sum(m.teams.B);
+      m.teams.difference = +Math.abs(m.teams.scoreA - m.teams.scoreB).toFixed(2);
+    }
+  });
+  // Sesiones y usuario
+  for (const [t, s] of Object.entries(db.sessions)) if (s.userId === uid) delete db.sessions[t];
+  db.users = db.users.filter(u => u.id !== uid);
+}
+
+// Administrador: eliminar un usuario (cuenta o invitado)
+app.post('/api/admin/delete-user', requireAuth, (req, res) => {
+  const db = load();
+  if (!isAdmin(req.user)) return res.status(403).json({ error: 'Solo el administrador puede eliminar usuarios' });
+  const uname = String(req.body?.username || '').trim().toLowerCase();
+  const target = findAccount(db, uname)
+    || db.users.find(u => u.isGuest && u.displayName.toLowerCase() === uname);
+  if (!target) return res.status(404).json({ error: 'No existe ese usuario (para invitados usa su nombre)' });
+  if (target.id === req.userId) return res.status(400).json({ error: 'No puedes eliminar tu propia cuenta de administrador' });
+  const name = target.displayName;
+  deleteUserCascade(db, target);
+  save();
+  res.json({ ok: true, deleted: name });
+});
+
 // ---------- INVITADOS (jugadores sin cuenta) ----------
 app.post('/api/guests', requireAuth, (req, res) => {
   const db = load();
@@ -384,7 +430,7 @@ function matchView(db, m, userId) {
     perSide: m.perSide || 5,
     groupId: m.groupId || null,
     groupName: group ? group.name : null,
-    creator: userOf(m.creator),
+    creator: userOf(m.creator) || { id: m.creator, username: '', displayName: 'Usuario eliminado', position: 'medio', foot: 'derecho', points: 0, rating: 0, isGuest: false, ownerId: null },
     isCreator: m.creator === userId,
     players: m.players.map(userOf).filter(Boolean),
     invites: m.invites.map(i => ({ ...i, user: userOf(i.userId) })).filter(i => i.user),
