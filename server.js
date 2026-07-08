@@ -384,6 +384,25 @@ app.get('/api/matches', requireAuth, (req, res) => {
   res.json({ matches: visible.sort((a, b) => b.createdAt - a.createdAt).map(m => matchView(db, m, req.userId)) });
 });
 
+// Editar datos del partido (solo el creador, antes del resultado)
+app.put('/api/matches/:id', requireAuth, (req, res) => {
+  const db = load();
+  const m = db.matches.find(x => x.id === req.params.id);
+  if (!m) return res.status(404).json({ error: 'Partido no encontrado' });
+  if (m.creator !== req.userId) return res.status(403).json({ error: 'Solo el creador puede editar el partido' });
+  if (m.result) return res.status(400).json({ error: 'No se puede editar un partido finalizado' });
+  const { title, place, date, perSide } = req.body || {};
+  if (title !== undefined && String(title).trim()) m.title = String(title).trim().slice(0, 60);
+  if (place !== undefined) m.place = String(place).trim().slice(0, 80);
+  if (date !== undefined) m.date = String(date).slice(0, 30);
+  if (perSide !== undefined) {
+    const ps = Math.round(Number(perSide));
+    if (Number.isFinite(ps)) m.perSide = Math.min(11, Math.max(2, ps));
+  }
+  save();
+  res.json({ match: matchView(db, m, req.userId) });
+});
+
 app.post('/api/matches/:id/invite', requireAuth, (req, res) => {
   const db = load();
   const m = db.matches.find(x => x.id === req.params.id);

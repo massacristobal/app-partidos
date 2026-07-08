@@ -411,6 +411,17 @@ async function renderMatches() {
           const mvpSel = el.querySelector(`select[data-mvp="${mid}"]`);
           await api(`/matches/${mid}/result`, 'POST', { scoreA: a, scoreB: b, mvpId: mvpSel ? (mvpSel.value || null) : null });
           toast('Resultado registrado 🏆 Puntos repartidos');
+        } else if (action === 'editToggle') {
+          document.getElementById('editForm-' + mid).classList.toggle('hidden');
+          return; // sin recargar la vista
+        } else if (action === 'saveedit') {
+          await api(`/matches/${mid}`, 'PUT', {
+            title: el.querySelector(`input[data-etitle="${mid}"]`).value,
+            place: el.querySelector(`input[data-eplace="${mid}"]`).value,
+            date: el.querySelector(`input[data-edate="${mid}"]`).value,
+            perSide: el.querySelector(`select[data-eperside="${mid}"]`).value
+          });
+          toast('Partido actualizado ✓');
         } else if (action === 'del') {
           const finished = btn.dataset.finished === '1';
           const msg = finished
@@ -485,6 +496,7 @@ function matchCard(m, friends, groups) {
       <h2 class="mtoggle" data-toggle="${m.id}">${open ? '▾' : '▸'} ${esc(m.title)} ${statusPill} ${m.groupName ? `<span class="pill blue">${esc(m.groupName)}</span>` : ''}</h2>
       <span class="row">
         <span class="muted">por ${esc(m.creator.displayName)}</span>
+        ${m.isCreator && !m.result ? `<button class="btn small" title="Editar partido" data-action="editToggle" data-match="${m.id}">✏️</button>` : ''}
         ${m.isCreator ? `<button class="btn small danger" title="Eliminar partido" data-action="del" data-match="${m.id}" data-finished="${m.result ? 1 : 0}">🗑️</button>` : ''}
       </span>
     </div>
@@ -492,6 +504,16 @@ function matchCard(m, friends, groups) {
       ${m.place ? '📍 ' + esc(m.place) + ' · ' : ''}${m.date ? '🗓️ ' + esc(m.date.replace('T', ' ')) + ' · ' : ''}
       ⚽ ${m.perSide} vs ${m.perSide}
     </p>
+    ${m.isCreator && !m.result ? `
+    <div class="row hidden" id="editForm-${m.id}" style="margin-top:6px">
+      <input data-etitle="${m.id}" value="${esc(m.title)}" placeholder="Título" style="flex:2">
+      <input data-eplace="${m.id}" value="${esc(m.place || '')}" placeholder="Lugar" style="flex:1">
+      <input data-edate="${m.id}" type="datetime-local" value="${esc(m.date || '')}" style="flex:1">
+      <select data-eperside="${m.id}">
+        ${[2,3,4,5,6,7,8,9,10,11].map(n => `<option value="${n}" ${n === m.perSide ? 'selected' : ''}>${n} vs ${n}</option>`).join('')}
+      </select>
+      <button class="btn small primary" data-action="saveedit" data-match="${m.id}">💾 Guardar</button>
+    </div>` : ''}
 
     <div class="mbody ${open ? '' : 'hidden'}" id="mbody-${m.id}">
     <h3>Jugadores (${m.players.length}/${spots})</h3>
