@@ -97,6 +97,9 @@ main { max-width: 880px; margin: 0 auto; padding: 20px 16px 60px; }
 .sugitem:last-child { border-bottom: none; }
 
 .pill.wdl { background: #f0f3f0; color: var(--text); }
+.pillx { border: none; background: transparent; color: var(--red); cursor: pointer; font-weight: 800;
+  font-size: 12px; padding: 0 2px; margin-left: 2px; }
+.pillx:hover { transform: scale(1.2); }
 
 .cdot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 4px; border: 1px solid rgba(0,0,0,.15); }
 input[type=color] { padding: 2px; width: 36px; height: 32px; border-radius: 6px; cursor: pointer; }

@@ -135,6 +135,18 @@ async function renderHome() {
       <div><strong>Crear partido</strong><br><span style="opacity:.85">Selecciona jugadores y arma los equipos</span></div>
       <span class="cta-plus">＋</span>
     </div>
+    ${friendsData.pendingIn.length ? `
+      <h3 class="hsec">👋 Solicitudes de amistad</h3>
+      ${friendsData.pendingIn.map(p => `
+        <div class="card">
+          <div class="row between">
+            <span><strong>${esc(p.displayName)}</strong> <span class="muted">@${esc(p.username)}</span> quiere ser tu amigo</span>
+            <span class="row">
+              <button class="btn small primary" data-haccept="${p.friendshipId}">Aceptar</button>
+              <button class="btn small danger" data-hreject="${p.friendshipId}">Rechazar</button>
+            </span>
+          </div>
+        </div>`).join('')}` : ''}
     ${upcoming.length ? `
       <h3 class="hsec">📅 Próximos partidos</h3>
       ${upcoming.slice(0, 3).map(m => `
@@ -152,6 +164,16 @@ async function renderHome() {
 
   $('#homeCreate').onclick = () => showView('newmatch');
   el.querySelectorAll('[data-goto]').forEach(x => x.onclick = () => showView(x.dataset.goto));
+  el.querySelectorAll('[data-haccept]').forEach(b => b.onclick = async e => {
+    e.stopPropagation();
+    try { await api('/friends/respond', 'POST', { friendshipId: b.dataset.haccept, accept: true }); toast('¡Ahora son amigos! ⚽'); renderHome(); }
+    catch (err) { toast(err.message, true); }
+  });
+  el.querySelectorAll('[data-hreject]').forEach(b => b.onclick = async e => {
+    e.stopPropagation();
+    try { await api('/friends/respond', 'POST', { friendshipId: b.dataset.hreject, accept: false }); renderHome(); }
+    catch (err) { toast(err.message, true); }
+  });
 }
 
 // ---------- Nuevo partido ----------
@@ -638,6 +660,12 @@ async function renderMatches() {
         } else if (action === 'move') {
           await api(`/matches/${mid}/move`, 'POST', { playerId: btn.dataset.player });
           toast('Cambio hecho ⇄');
+        } else if (action === 'remove') {
+          const who = btn.dataset.pname;
+          const msg = who ? `¿Sacar a ${who} del partido?` : '¿Bajarte de este partido?';
+          if (!confirm(msg)) return;
+          await api(`/matches/${mid}/remove`, 'POST', btn.dataset.player ? { userId: btn.dataset.player } : {});
+          toast(who ? `${who} fue sacado del partido` : 'Te bajaste del partido 🚪');
         } else if (action === 'editToggle') {
           document.getElementById('editForm-' + mid).classList.toggle('hidden');
           return; // sin recargar la vista
@@ -762,7 +790,14 @@ function matchCard(m, friends, groups) {
     <div class="mbody ${open ? '' : 'hidden'}" id="mbody-${m.id}">
     <h3>Jugadores (${m.players.length}/${spots})</h3>
     <div class="row">${m.players.map(p =>
-      `<span class="pill">${esc(p.displayName)}${p.isGuest ? ' 👤' : ''} · ${POS_ICON[p.position] || ''} ⭐${p.rating}</span>`).join(' ')}</div>
+      `<span class="pill">${esc(p.displayName)}${p.isGuest ? ' 👤' : ''} · ${POS_ICON[p.position] || ''} ⭐${p.rating}${
+        m.isCreator && !m.result && p.id !== m.creator.id
+          ? ` <button class="pillx" title="Sacar del partido" data-action="remove" data-match="${m.id}" data-player="${p.id}" data-pname="${esc(p.displayName)}">✕</button>` : ''
+      }</span>`).join(' ')}</div>
+    ${!m.isCreator && !m.result && m.players.some(p => p.id === me.id) ? `
+      <div class="row" style="margin-top:8px">
+        <button class="btn small danger" data-action="remove" data-match="${m.id}">🚪 Me bajo del partido</button>
+      </div>` : ''}
     ${m.invites.filter(i => i.status === 'pending').length ?
       `<p class="muted" style="margin-top:6px">Invitados pendientes: ${m.invites.filter(i => i.status === 'pending').map(i => esc(i.user.displayName)).join(', ')}</p>` : ''}
 

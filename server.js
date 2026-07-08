@@ -563,6 +563,31 @@ app.post('/api/matches/:id/respond', requireAuth, (req, res) => {
   res.json({ match: matchView(db, m, req.userId) });
 });
 
+// Sacar a un jugador del partido: el creador puede sacar a cualquiera; cada jugador puede bajarse solo
+app.post('/api/matches/:id/remove', requireAuth, (req, res) => {
+  const db = load();
+  const m = db.matches.find(x => x.id === req.params.id);
+  if (!m) return res.status(404).json({ error: 'Partido no encontrado' });
+  if (m.result) return res.status(400).json({ error: 'El partido ya terminó' });
+  const targetId = req.body?.userId || req.userId;
+  if (targetId !== req.userId && m.creator !== req.userId) {
+    return res.status(403).json({ error: 'Solo el creador puede sacar a otros jugadores' });
+  }
+  if (targetId === m.creator) return res.status(400).json({ error: 'El creador no puede salir de su propio partido' });
+  if (!m.players.includes(targetId)) return res.status(404).json({ error: 'Ese jugador no está en el partido' });
+  m.players = m.players.filter(id => id !== targetId);
+  m.invites = m.invites.filter(i => i.userId !== targetId); // podrá ser reinvitado
+  if (m.teams) {
+    ['A', 'B'].forEach(s => m.teams[s] = m.teams[s].filter(p => p.id !== targetId));
+    const sum = t => +(t.reduce((x, p) => x + (p.rating || 0), 0)).toFixed(2);
+    m.teams.scoreA = sum(m.teams.A);
+    m.teams.scoreB = sum(m.teams.B);
+    m.teams.difference = +Math.abs(m.teams.scoreA - m.teams.scoreB).toFixed(2);
+  }
+  save();
+  res.json({ match: matchView(db, m, req.userId) });
+});
+
 app.post('/api/matches/:id/teams', requireAuth, (req, res) => {
   const db = load();
   const m = db.matches.find(x => x.id === req.params.id);
