@@ -1,0 +1,111 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+:root {
+  --green: #1a7a3c;
+  --green-dark: #12592b;
+  --green-light: #e6f4ea;
+  --bg: #f4f6f4;
+  --card: #ffffff;
+  --text: #1c2b21;
+  --muted: #6b7c70;
+  --red: #c0392b;
+  --amber: #b8860b;
+  --radius: 12px;
+  --shadow: 0 2px 10px rgba(0,0,0,.08);
+}
+body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); color: var(--text); }
+.hidden { display: none !important; }
+
+/* ---- Auth ---- */
+.auth-screen { min-height: 100vh; display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(140deg, var(--green-dark), var(--green) 60%, #2e9e54); padding: 16px; }
+.auth-card { background: var(--card); border-radius: 16px; padding: 32px; width: 100%; max-width: 420px; box-shadow: var(--shadow); }
+.auth-card h1 { text-align: center; color: var(--green-dark); }
+.subtitle { text-align: center; color: var(--muted); margin: 6px 0 18px; }
+.tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+.tab { flex: 1; padding: 10px; border: none; background: var(--green-light); border-radius: 8px; cursor: pointer; font-weight: 600; color: var(--green-dark); }
+.tab.active { background: var(--green); color: #fff; }
+form { display: flex; flex-direction: column; gap: 10px; }
+input, select { padding: 11px 12px; border: 1px solid #ccd6cf; border-radius: 8px; font-size: 15px; }
+input:focus, select:focus { outline: 2px solid var(--green); border-color: transparent; }
+label { font-size: 13px; color: var(--muted); font-weight: 600; margin-top: 2px; }
+
+.btn { padding: 10px 16px; border: none; border-radius: 8px; cursor: pointer; font-size: 15px; font-weight: 600;
+  background: #e3e8e4; color: var(--text); transition: filter .15s; }
+.btn:hover { filter: brightness(.95); }
+.btn.primary { background: var(--green); color: #fff; }
+.btn.danger { background: var(--red); color: #fff; }
+.btn.small { padding: 6px 12px; font-size: 13px; }
+.error { color: var(--red); text-align: center; margin-top: 10px; min-height: 1em; font-size: 14px; }
+
+/* ---- Layout ---- */
+header { display: flex; align-items: center; gap: 12px; background: var(--green-dark); color: #fff; padding: 12px 20px; }
+.logo { font-weight: 700; font-size: 18px; flex: 1; }
+#userBadge { font-size: 14px; opacity: .9; }
+nav { display: flex; gap: 4px; background: var(--card); padding: 8px 16px; box-shadow: var(--shadow); position: sticky; top: 0; z-index: 5; }
+.navbtn { padding: 10px 14px; border: none; background: transparent; border-radius: 8px; cursor: pointer; font-size: 15px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+.navbtn.active { background: var(--green-light); color: var(--green-dark); }
+main { max-width: 880px; margin: 0 auto; padding: 20px 16px 60px; }
+
+.card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px; margin-bottom: 14px; }
+.card h2 { font-size: 17px; margin-bottom: 12px; color: var(--green-dark); }
+.card h3 { font-size: 15px; margin: 10px 0 6px; }
+.row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.row.between { justify-content: space-between; }
+.muted { color: var(--muted); font-size: 13px; }
+.pill { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--green-light); color: var(--green-dark); }
+.pill.amber { background: #fdf3d7; color: var(--amber); }
+.pill.red { background: #fbe4e1; color: var(--red); }
+.pill.blue { background: #e3ecfb; color: #2c5aa0; }
+
+.mtoggle { cursor: pointer; user-select: none; }
+.mtoggle:hover { opacity: .8; }
+
+.list-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; border-bottom: 1px solid #eef2ef; }
+.list-item:last-child { border-bottom: none; }
+
+/* ---- Cancha ---- */
+.pitch { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 10px; margin-top: 12px;
+  background:
+    repeating-linear-gradient(90deg, #2e8b47 0 12.5%, #2a7f41 12.5% 25%);
+  border: 3px solid #ffffffcc; overflow: hidden; }
+.pitch::before { /* línea central + círculo */
+  content: ''; position: absolute; left: 50%; top: 0; bottom: 0; width: 2px; background: #ffffffbb; }
+.pitch::after {
+  content: ''; position: absolute; left: 50%; top: 50%; width: 18%; aspect-ratio: 1;
+  border: 2px solid #ffffffbb; border-radius: 50%; transform: translate(-50%, -50%); }
+.pitch .area { position: absolute; top: 28%; height: 44%; width: 12%; border: 2px solid #ffffffbb; }
+.pitch .area.left { left: -2px; border-left: none; }
+.pitch .area.right { right: -2px; border-right: none; }
+.pdot { position: absolute; transform: translate(-50%, -50%); display: flex; flex-direction: column; align-items: center; z-index: 2; }
+.pdot .circle { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 800; color: #fff; border: 2px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.4); }
+.pdot.teamA .circle { background: #1b5e20; }
+.pdot.teamB .circle { background: #1a4fa0; }
+.pdot .pname { margin-top: 2px; font-size: 10px; font-weight: 700; color: #fff; text-shadow: 0 1px 2px rgba(0,0,0,.8);
+  max-width: 70px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- Equipos (lista bajo la cancha) ---- */
+.teams { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 10px; }
+.team { border: 2px solid var(--green-light); border-radius: 10px; padding: 12px; }
+.team.b { border-color: #dbe4f5; }
+.team h4 { margin-bottom: 8px; }
+.team ul { list-style: none; }
+.team li { padding: 5px 0; border-bottom: 1px dashed #e4eae5; font-size: 14px; display: flex; justify-content: space-between; align-items: center; gap: 6px; }
+.team li:last-child { border-bottom: none; }
+.swapbtn { border: none; background: var(--green-light); color: var(--green-dark); border-radius: 6px;
+  cursor: pointer; font-size: 13px; font-weight: 700; padding: 2px 8px; }
+.swapbtn:hover { background: var(--green); color: #fff; }
+.vs { text-align: center; font-weight: 700; margin: 6px 0; }
+
+.toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--text); color: #fff;
+  padding: 12px 22px; border-radius: 10px; box-shadow: var(--shadow); font-size: 14px; z-index: 100; }
+
+.code-badge { font-family: monospace; font-size: 15px; font-weight: 700; background: #f0f3f0;
+  padding: 4px 10px; border-radius: 6px; letter-spacing: 2px; }
+
+@media (max-width: 600px) {
+  .teams { grid-template-columns: 1fr; }
+  nav { overflow-x: auto; }
+  .pdot .pname { max-width: 44px; }
+}
+/* v2 */

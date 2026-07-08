@@ -1,0 +1,16 @@
+{
+  "name": "app-partidos",
+  "version": "1.0.0",
+  "description": "App para armar equipos parejos de fútbol: usuarios, amigos, partidos y balanceo por atributos y puntos",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^4.19.0"
+  }
+}
