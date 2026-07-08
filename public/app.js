@@ -2,6 +2,12 @@
 const $ = sel => document.querySelector(sel);
 const POS_LABEL = { arquero: '🧤 Arquero', defensa: '🛡️ Defensa', medio: '⚙️ Medio', delantero: '🎯 Delantero' };
 const POS_ICON = { arquero: '🧤', defensa: '🛡️', medio: '⚙️', delantero: '🎯' };
+const FOOT_LABEL = { derecho: '🦶 Derecho', izquierdo: '🦶 Izquierdo', ambos: '🦶 Ambos' };
+const TEAM_COLORS = [
+  ['#d32f2f', 'Rojo'], ['#1a4fa0', 'Azul'], ['#1b5e20', 'Verde'], ['#f9a825', 'Amarillo'],
+  ['#ef6c00', 'Naranjo'], ['#6a1b9a', 'Morado'], ['#212121', 'Negro'], ['#eeeeee', 'Blanco']
+];
+const mapsLink = place => 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(place);
 
 let token = localStorage.getItem('token');
 let me = null;
@@ -49,7 +55,7 @@ document.querySelectorAll('[data-authtab]').forEach(btn => {
 $('#loginForm').onsubmit = async e => {
   e.preventDefault();
   try {
-    const data = await api('/login', 'POST', { username: $('#loginUser').value, password: $('#loginPass').value });
+    const data = await api('/login', 'POST', { email: $('#loginUser').value, password: $('#loginPass').value });
     token = data.token; localStorage.setItem('token', token);
     await boot();
   } catch (err) { $('#authError').textContent = err.message; }
@@ -59,8 +65,9 @@ $('#registerForm').onsubmit = async e => {
   e.preventDefault();
   try {
     const data = await api('/register', 'POST', {
-      username: $('#regUser').value, password: $('#regPass').value,
-      displayName: $('#regName').value, position: $('#regPosition').value
+      firstName: $('#regFirst').value, lastName: $('#regLast').value,
+      email: $('#regEmail').value, password: $('#regPass').value,
+      position: $('#regPosition').value, foot: $('#regFoot').value
     });
     token = data.token; localStorage.setItem('token', token);
     await boot();
@@ -98,6 +105,12 @@ async function renderProfile() {
           ${Object.entries(POS_LABEL).map(([v, l]) =>
             `<option value="${v}" ${me.position === v ? 'selected' : ''}>${l}</option>`).join('')}
         </select>
+        <label>Pie hábil</label>
+        <select id="profFoot">
+          ${Object.entries(FOOT_LABEL).map(([v, l]) =>
+            `<option value="${v}" ${(me.foot || 'derecho') === v ? 'selected' : ''}>${l}</option>`).join('')}
+        </select>
+        ${me.email ? `<p class="muted">Email: ${esc(me.email)}</p>` : ''}
         <div class="row between" style="margin-top:10px">
           <span class="pill">⭐ Rating: ${me.rating ?? '-'}</span>
           <span class="pill amber">🏆 Puntos: ${me.points || 0}</span>
@@ -159,7 +172,7 @@ async function renderProfile() {
     e.preventDefault();
     try {
       const data = await api('/me', 'PUT', {
-        displayName: $('#profName').value, position: $('#profPosition').value
+        displayName: $('#profName').value, position: $('#profPosition').value, foot: $('#profFoot').value
       });
       me = data.user;
       $('#userBadge').textContent = me.displayName;
@@ -210,6 +223,7 @@ async function renderFriends() {
           <span>${playerTag(f)} ${!f.isGuest ? `<span class="muted">@${esc(f.username)}</span>` : ''}</span>
           <span class="row">
             <span class="pill">${POS_LABEL[f.position] || f.position}</span>
+            <span class="pill">${FOOT_LABEL[f.foot] || '🦶 Derecho'}</span>
             <span class="pill amber">🏆 ${f.points || 0}</span>
             ${f.isGuest && f.ownerId === me.id ? `<button class="btn small" data-link="${f.id}">🔗 Vincular cuenta</button>` : ''}
           </span>
@@ -293,7 +307,11 @@ async function renderGroups() {
           <h2>${esc(g.name)} ${g.isOwner ? '<span class="pill">admin</span>' : ''}</h2>
           <span class="row"><span class="muted">Código:</span> <span class="code-badge">${esc(g.joinCode)}</span></span>
         </div>
-        <p class="muted" style="margin-bottom:8px">Comparte el código para que otros se unan.</p>
+        <div class="row" style="margin-bottom:8px">
+          <button class="btn small" data-copylink="${esc(g.joinCode)}">🔗 Copiar enlace</button>
+          <button class="btn small" data-showqr="${g.id}" data-code="${esc(g.joinCode)}">📱 Ver QR</button>
+        </div>
+        <div class="hidden" id="qr-${g.id}" style="text-align:center;margin-bottom:8px"></div>
         <h3>Miembros (${g.members.length})</h3>
         ${g.members.map(m => `
           <div class="list-item">
@@ -326,6 +344,20 @@ async function renderGroups() {
     if (!sel.value) return toast('Elige a quién agregar', true);
     try { await api(`/groups/${b.dataset.addbtn}/add`, 'POST', { userId: sel.value }); toast('Agregado al grupo ✓'); renderGroups(); }
     catch (err) { toast(err.message, true); }
+  });
+  el.querySelectorAll('[data-copylink]').forEach(b => b.onclick = async () => {
+    const link = location.origin + '/?join=' + b.dataset.copylink;
+    try { await navigator.clipboard.writeText(link); toast('Enlace copiado ✓ Compártelo por WhatsApp'); }
+    catch { prompt('Copia este enlace:', link); }
+  });
+  el.querySelectorAll('[data-showqr]').forEach(b => b.onclick = () => {
+    const box = document.getElementById('qr-' + b.dataset.showqr);
+    if (!box.classList.toggle('hidden')) {
+      const link = location.origin + '/?join=' + b.dataset.code;
+      box.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(link)}"
+        alt="QR del grupo" width="180" height="180" style="border-radius:8px">
+        <p class="muted">Escanea para unirse al grupo</p>`;
+    }
   });
 }
 
@@ -363,7 +395,15 @@ async function renderMatches() {
       ${(() => {
         const active = data.matches.filter(m => !m.result);
         const played = data.matches.filter(m => m.result);
+        // Recordatorio: partidos que empezaron hace más de 1:30 sin resultado registrado
+        const pendingResult = active.filter(m => m.isCreator && m.teams && m.date &&
+          Date.now() > Date.parse(m.date) + 90 * 60000);
         return `
+          ${pendingResult.length ? `
+          <div class="card warn">
+            <h2>⏰ Falta registrar el resultado</h2>
+            <p class="muted">${pendingResult.map(m => esc(m.title)).join(', ')} ya ${pendingResult.length > 1 ? 'terminaron' : 'terminó'} — anota el marcador para repartir los puntos.</p>
+          </div>` : ''}
           ${active.length ? active.map(m => matchCard(m, friendsData.friends, groups)).join('')
             : '<div class="card"><p class="muted">No hay partidos activos. ¡Crea el primero!</p></div>'}
           ${played.length ? `
@@ -441,8 +481,8 @@ async function renderMatches() {
           await api(`/matches/${mid}`, 'PUT', {
             teamAName: el.querySelector(`input[data-tna="${mid}"]`).value,
             teamBName: el.querySelector(`input[data-tnb="${mid}"]`).value,
-            teamAColor: el.querySelector(`input[data-tca="${mid}"]`).value,
-            teamBColor: el.querySelector(`input[data-tcb="${mid}"]`).value
+            teamAColor: el.querySelector(`select[data-tca="${mid}"]`).value,
+            teamBColor: el.querySelector(`select[data-tcb="${mid}"]`).value
           });
           toast('Equipos actualizados ✓');
         } else if (action === 'del') {
@@ -505,8 +545,10 @@ function matchCard(m, friends, groups) {
     !m.players.some(p => p.id === f.id) &&
     !m.invites.some(i => i.user.id === f.id && i.status === 'pending'));
 
+  const lateNoResult = !m.result && m.teams && m.date && Date.now() > Date.parse(m.date) + 90 * 60000;
   const statusPill = m.result
     ? `<span class="pill">Finalizado ${m.result.scoreA} - ${m.result.scoreB}</span>`
+    : lateNoResult ? '<span class="pill red">⏰ Falta resultado</span>'
     : m.teams ? '<span class="pill amber">Equipos listos</span>'
     : '<span class="pill">Convocando</span>';
   const spots = m.perSide * 2;
@@ -528,7 +570,7 @@ function matchCard(m, friends, groups) {
       </span>
     </div>
     <p class="muted">
-      ${m.place ? '📍 ' + esc(m.place) + ' · ' : ''}${m.date ? '🗓️ ' + esc(m.date.replace('T', ' ')) + ' · ' : ''}
+      ${m.place ? `<a href="${mapsLink(m.place)}" target="_blank" rel="noopener" style="color:var(--green-dark)">📍 ${esc(m.place)}</a> · ` : ''}${m.date ? '🗓️ ' + esc(m.date.replace('T', ' ')) + ' · ' : ''}
       ⚽ ${m.perSide} vs ${m.perSide}
     </p>
     ${m.isCreator && !m.result ? `
@@ -587,9 +629,13 @@ function matchCard(m, friends, groups) {
       ${m.isCreator && !m.result ? `
       <div class="row" style="margin-top:8px;justify-content:center">
         <input data-tna="${m.id}" value="${esc(tn.nameA)}" maxlength="25" placeholder="Nombre equipo A" style="width:130px">
-        <input type="color" data-tca="${m.id}" value="${tn.colorA}" title="Color equipo A">
+        <select data-tca="${m.id}" title="Color equipo A">
+          ${TEAM_COLORS.map(([hex, name]) => `<option value="${hex}" ${hex === tn.colorA ? 'selected' : ''}>● ${name}</option>`).join('')}
+        </select>
         <input data-tnb="${m.id}" value="${esc(tn.nameB)}" maxlength="25" placeholder="Nombre equipo B" style="width:130px">
-        <input type="color" data-tcb="${m.id}" value="${tn.colorB}" title="Color equipo B">
+        <select data-tcb="${m.id}" title="Color equipo B">
+          ${TEAM_COLORS.map(([hex, name]) => `<option value="${hex}" ${hex === tn.colorB ? 'selected' : ''}>● ${name}</option>`).join('')}
+        </select>
         <button class="btn small" data-action="teamsinfo" data-match="${m.id}">💾 Equipos</button>
       </div>` : ''}
       <p class="vs muted">Diferencia de nivel: ${m.teams.difference}${m.isCreator && !m.result ? ' · Usa ⇄ para cambios manuales' : ''}</p>
@@ -639,6 +685,23 @@ async function renderRanking(groupId = '') {
 }
 
 // ---------- Boot ----------
+// Si la URL trae ?join=CODIGO (enlace o QR de un grupo), se guarda para aplicarlo al entrar
+const joinParam = new URLSearchParams(location.search).get('join');
+if (joinParam) {
+  localStorage.setItem('pendingJoin', joinParam);
+  history.replaceState(null, '', location.pathname);
+}
+
+async function applyPendingJoin() {
+  const code = localStorage.getItem('pendingJoin');
+  if (!code) return;
+  localStorage.removeItem('pendingJoin');
+  try {
+    const r = await api('/groups/join', 'POST', { code });
+    toast(`Te uniste a ${r.group.name} ⚽`);
+  } catch (err) { toast(err.message, true); }
+}
+
 async function boot() {
   if (token) {
     try {
@@ -647,6 +710,7 @@ async function boot() {
       $('#authScreen').classList.add('hidden');
       $('#mainScreen').classList.remove('hidden');
       $('#userBadge').textContent = me.displayName;
+      await applyPendingJoin();
       showView('matches');
       return;
     } catch {
@@ -655,6 +719,9 @@ async function boot() {
   }
   $('#mainScreen').classList.add('hidden');
   $('#authScreen').classList.remove('hidden');
+  if (localStorage.getItem('pendingJoin')) {
+    $('#authError').textContent = 'Entra o crea tu cuenta para unirte al grupo';
+  }
 }
 boot();
 // v2

@@ -25,7 +25,12 @@ body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); co
 .tab { flex: 1; padding: 10px; border: none; background: var(--green-light); border-radius: 8px; cursor: pointer; font-weight: 600; color: var(--green-dark); }
 .tab.active { background: var(--green); color: #fff; }
 form { display: flex; flex-direction: column; gap: 10px; }
-input, select { padding: 11px 12px; border: 1px solid #ccd6cf; border-radius: 8px; font-size: 15px; }
+input, select {
+  padding: 11px 12px; border: 1px solid #ccd6cf; border-radius: 8px; font-size: 16px;
+  background: #fff; color: var(--text); -webkit-appearance: none; appearance: none;
+}
+select { background-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%236b7c70'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 28px; }
+input[type="datetime-local"] { min-height: 44px; }
 input:focus, select:focus { outline: 2px solid var(--green); border-color: transparent; }
 label { font-size: 13px; color: var(--muted); font-weight: 600; margin-top: 2px; }
 
@@ -47,6 +52,7 @@ nav { display: flex; gap: 4px; background: var(--card); padding: 8px 16px; box-s
 main { max-width: 880px; margin: 0 auto; padding: 20px 16px 60px; }
 
 .card { background: var(--card); border-radius: var(--radius); box-shadow: var(--shadow); padding: 18px; margin-bottom: 14px; }
+.card.warn { border-left: 4px solid var(--amber); }
 .card h2 { font-size: 17px; margin-bottom: 12px; color: var(--green-dark); }
 .card h3 { font-size: 15px; margin: 10px 0 6px; }
 .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }

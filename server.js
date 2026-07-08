@@ -16,13 +16,28 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 const POSITIONS = ['arquero', 'defensa', 'medio', 'delantero'];
+const FEET = ['derecho', 'izquierdo', 'ambos'];
 const ADMIN_USERNAME = (process.env.ADMIN_USERNAME || '').trim().toLowerCase();
-const isAdmin = u => !!ADMIN_USERNAME && u.username === ADMIN_USERNAME;
+const isAdmin = u => !!ADMIN_USERNAME && (u.username === ADMIN_USERNAME || (u.email || '') === ADMIN_USERNAME);
+
+// Genera un nombre de usuario único a partir del email
+function genUsername(db, email) {
+  const base = email.split('@')[0].toLowerCase().replace(/[^a-z0-9_.-]/g, '').slice(0, 20) || 'jugador';
+  let u = base, i = 1;
+  while (db.users.some(x => x.username === u)) u = base.slice(0, 17) + (++i);
+  return u;
+}
+
+// Busca una cuenta (no invitado) por email o nombre de usuario
+function findAccount(db, identifier) {
+  const idf = String(identifier || '').trim().toLowerCase();
+  return db.users.find(u => !u.isGuest && ((u.email || '') === idf || u.username === idf));
+}
 
 function userBrief(u) {
   return u && {
     id: u.id, username: u.username, displayName: u.displayName,
-    position: u.position, points: u.points || 0, rating: playerRating(u),
+    position: u.position, foot: u.foot || 'derecho', points: u.points || 0, rating: playerRating(u),
     isGuest: !!u.isGuest, ownerId: u.ownerId || null
   };
 }
@@ -30,21 +45,28 @@ function userBrief(u) {
 // ---------- AUTH ----------
 app.post('/api/register', (req, res) => {
   const db = load();
-  const { username, password, displayName, position } = req.body || {};
-  if (!username || !password) return res.status(400).json({ error: 'Usuario y contraseña requeridos' });
-  if (password.length < 4) return res.status(400).json({ error: 'Contraseña muy corta (mínimo 4)' });
-  const uname = String(username).trim().toLowerCase();
-  if (!/^[a-z0-9_.-]{3,20}$/.test(uname)) return res.status(400).json({ error: 'Usuario inválido (3-20 caracteres, letras/números/._-)' });
-  if (db.users.some(u => u.username === uname)) return res.status(409).json({ error: 'Ese usuario ya existe' });
+  const { firstName, lastName, email, password, position, foot } = req.body || {};
+  const mail = String(email || '').trim().toLowerCase();
+  const fn = String(firstName || '').trim();
+  const ln = String(lastName || '').trim();
+  if (!fn) return res.status(400).json({ error: 'Falta el nombre' });
+  if (!ln) return res.status(400).json({ error: 'Falta el apellido' });
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(mail)) return res.status(400).json({ error: 'Email inválido' });
+  if (!password || password.length < 4) return res.status(400).json({ error: 'Contraseña muy corta (mínimo 4)' });
+  if (db.users.some(u => (u.email || '') === mail)) return res.status(409).json({ error: 'Ya existe una cuenta con ese email' });
 
   const { salt, hash } = hashPassword(password);
   const user = {
     id: newId('u'),
-    username: uname,
-    displayName: (displayName || username).trim().slice(0, 40),
+    username: genUsername(db, mail),
+    email: mail,
+    firstName: fn.slice(0, 25),
+    lastName: ln.slice(0, 25),
+    displayName: `${fn} ${ln}`.slice(0, 40),
     passHash: hash,
     salt,
     position: POSITIONS.includes(position) ? position : 'medio',
+    foot: FEET.includes(foot) ? foot : 'derecho',
     points: 0,
     createdAt: Date.now()
   };
@@ -56,10 +78,10 @@ app.post('/api/register', (req, res) => {
 
 app.post('/api/login', (req, res) => {
   const db = load();
-  const { username, password } = req.body || {};
-  const user = db.users.find(u => !u.isGuest && u.username === String(username || '').trim().toLowerCase());
+  const { email, username, password } = req.body || {};
+  const user = findAccount(db, email || username);
   if (!user || !verifyPassword(password || '', user.salt, user.passHash)) {
-    return res.status(401).json({ error: 'Usuario o contraseña incorrectos' });
+    return res.status(401).json({ error: 'Email o contraseña incorrectos' });
   }
   const token = createSession(user.id);
   res.json({ token, user: publicUser(user) });
@@ -75,9 +97,10 @@ app.get('/api/me', requireAuth, (req, res) => {
 });
 
 app.put('/api/me', requireAuth, (req, res) => {
-  const { displayName, position } = req.body || {};
+  const { displayName, position, foot } = req.body || {};
   if (displayName) req.user.displayName = String(displayName).trim().slice(0, 40);
   if (POSITIONS.includes(position)) req.user.position = position;
+  if (FEET.includes(foot)) req.user.foot = foot;
   save();
   res.json({ user: { ...publicUser(req.user), rating: playerRating(req.user) } });
 });
@@ -106,9 +129,8 @@ app.put('/api/me/password', requireAuth, (req, res) => {
 app.post('/api/admin/reset-password', requireAuth, (req, res) => {
   const db = load();
   if (!isAdmin(req.user)) return res.status(403).json({ error: 'Solo el administrador puede resetear contraseñas' });
-  const uname = String(req.body?.username || '').trim().toLowerCase();
-  const target = db.users.find(u => !u.isGuest && u.username === uname);
-  if (!target) return res.status(404).json({ error: 'No existe una cuenta con ese usuario' });
+  const target = findAccount(db, req.body?.username);
+  if (!target) return res.status(404).json({ error: 'No existe una cuenta con ese email o usuario' });
   const newPassword = String(req.body?.newPassword || '');
   if (newPassword.length < 4) return res.status(400).json({ error: 'La contraseña temporal es muy corta (mínimo 4)' });
   const { salt, hash } = hashPassword(newPassword);
@@ -128,7 +150,8 @@ app.get('/api/users/search', requireAuth, (req, res) => {
   const q = String(req.query.q || '').trim().toLowerCase();
   if (q.length < 2) return res.json({ users: [] });
   const results = db.users
-    .filter(u => !u.isGuest && u.id !== req.userId && (u.username.includes(q) || u.displayName.toLowerCase().includes(q)))
+    .filter(u => !u.isGuest && u.id !== req.userId &&
+      (u.username.includes(q) || u.displayName.toLowerCase().includes(q) || (u.email || '').includes(q)))
     .slice(0, 10)
     .map(u => ({ id: u.id, username: u.username, displayName: u.displayName, position: u.position }));
   res.json({ users: results });
@@ -191,7 +214,7 @@ app.post('/api/admin/set-points', requireAuth, (req, res) => {
   const db = load();
   if (!isAdmin(req.user)) return res.status(403).json({ error: 'Solo el administrador puede ajustar puntos' });
   const uname = String(req.body?.username || '').trim().toLowerCase();
-  const target = db.users.find(u => u.username === uname)
+  const target = findAccount(db, uname)
     || db.users.find(u => u.isGuest && u.displayName.toLowerCase() === uname);
   if (!target) return res.status(404).json({ error: 'No existe ese usuario (para invitados usa su nombre)' });
   const pts = Math.round(Number(req.body?.points));
@@ -204,7 +227,7 @@ app.post('/api/admin/set-points', requireAuth, (req, res) => {
 // ---------- INVITADOS (jugadores sin cuenta) ----------
 app.post('/api/guests', requireAuth, (req, res) => {
   const db = load();
-  const { displayName, position } = req.body || {};
+  const { displayName, position, foot } = req.body || {};
   const name = String(displayName || '').trim().slice(0, 40);
   if (name.length < 2) return res.status(400).json({ error: 'Nombre muy corto' });
   const guest = {
@@ -212,6 +235,7 @@ app.post('/api/guests', requireAuth, (req, res) => {
     username: 'invitado_' + Math.random().toString(36).slice(2, 8),
     displayName: name,
     position: POSITIONS.includes(position) ? position : 'medio',
+    foot: FEET.includes(foot) ? foot : 'derecho',
     points: 0,
     isGuest: true,
     ownerId: req.userId,

@@ -18,20 +18,27 @@
         <button class="tab" data-authtab="register">Crear cuenta</button>
       </div>
       <form id="loginForm">
-        <input id="loginUser" placeholder="Usuario" autocomplete="username" required>
+        <input id="loginUser" type="text" placeholder="Email" autocomplete="email" required>
         <input id="loginPass" type="password" placeholder="Contraseña" autocomplete="current-password" required>
         <button type="submit" class="btn primary">Entrar</button>
       </form>
       <form id="registerForm" class="hidden">
-        <input id="regUser" placeholder="Usuario (ej: cristobal)" required>
-        <input id="regName" placeholder="Nombre para mostrar" required>
-        <input id="regPass" type="password" placeholder="Contraseña" required>
+        <input id="regFirst" placeholder="Nombre" autocomplete="given-name" required>
+        <input id="regLast" placeholder="Apellido" autocomplete="family-name" required>
+        <input id="regEmail" type="email" placeholder="Email" autocomplete="email" required>
+        <input id="regPass" type="password" placeholder="Contraseña" autocomplete="new-password" required>
         <label>Posición</label>
         <select id="regPosition">
           <option value="arquero">🧤 Arquero</option>
           <option value="defensa">🛡️ Defensa</option>
           <option value="medio" selected>⚙️ Mediocampista</option>
           <option value="delantero">🎯 Delantero</option>
+        </select>
+        <label>Pie hábil</label>
+        <select id="regFoot">
+          <option value="derecho" selected>🦶 Derecho</option>
+          <option value="izquierdo">🦶 Izquierdo</option>
+          <option value="ambos">🦶 Ambos</option>
         </select>
         <button type="submit" class="btn primary">Crear cuenta</button>
       </form>
