@@ -218,6 +218,19 @@ app.get('/api/friends', requireAuth, (req, res) => {
   res.json({ friends, pendingIn, pendingOut });
 });
 
+// Administrador: listar todas las cuentas
+app.get('/api/admin/users', requireAuth, (req, res) => {
+  const db = load();
+  if (!isAdmin(req.user)) return res.status(403).json({ error: 'Solo el administrador puede ver las cuentas' });
+  const users = db.users.map(u => ({
+    ...userBrief(u),
+    email: u.email || null,
+    createdAt: u.createdAt,
+    ownerName: u.isGuest ? (db.users.find(x => x.id === u.ownerId)?.displayName || null) : null
+  })).sort((a, b) => (b.points - a.points) || (a.createdAt - b.createdAt));
+  res.json({ users });
+});
+
 // Administrador: ajustar los puntos de un jugador
 app.post('/api/admin/set-points', requireAuth, (req, res) => {
   const db = load();

@@ -355,7 +355,24 @@ async function renderProfile() {
 // ---------- Administrador ----------
 async function renderAdmin() {
   const el = $('#view-admin');
+  let usersData = { users: [] };
+  try { usersData = await api('/admin/users'); } catch (err) { toast(err.message, true); }
   el.innerHTML = `
+    <div class="card">
+      <h2>👥 Cuentas registradas (${usersData.users.length})</h2>
+      ${usersData.users.map(u => `
+        <div class="list-item">
+          <span>${playerTag(u)}<br>
+            <span class="muted">${u.isGuest ? 'invitado · creado por ' + esc(u.ownerName || '¿?') : esc(u.email || '@' + u.username)}
+            ${u.createdAt ? ' · desde ' + new Date(u.createdAt).toLocaleDateString('es-CL') : ''}</span>
+          </span>
+          <span class="row">
+            <span class="pill">${POS_LABEL[u.position] || u.position}</span>
+            <span class="pill amber">🏆 ${u.points}</span>
+            <button class="btn small" title="Copiar a los formularios de abajo" data-use="${esc(u.isGuest ? u.displayName : (u.email || u.username))}">Usar ↓</button>
+          </span>
+        </div>`).join('')}
+    </div>
     <div class="card">
       <h2>🔑 Resetear contraseña</h2>
       <p class="muted" style="margin-bottom:8px">Para cuando alguien olvida su clave: asígnale una temporal y pídele que la cambie al entrar.</p>
@@ -382,6 +399,12 @@ async function renderAdmin() {
         <button class="btn danger">Eliminar</button>
       </form>
     </div>`;
+  el.querySelectorAll('[data-use]').forEach(b => b.onclick = () => {
+    $('#resetUser').value = b.dataset.use;
+    $('#pointsUser').value = b.dataset.use;
+    $('#deleteUserName').value = b.dataset.use;
+    toast(`"${b.dataset.use}" copiado a los formularios ↓`);
+  });
   $('#resetForm').onsubmit = async e => {
     e.preventDefault();
     try {
@@ -713,14 +736,24 @@ function pitchHTML(teams) {
     const order = ['arquero', 'defensa', 'medio', 'delantero'];
     const byPos = {};
     team.forEach(p => (byPos[p.position || 'medio'] ||= []).push(p));
+    // Solo UN jugador al arco: los arqueros extra pasan a la línea de defensa
+    if (byPos.arquero && byPos.arquero.length > 1) {
+      const extra = byPos.arquero.slice(1);
+      byPos.arquero = [byPos.arquero[0]];
+      (byPos.defensa ||= []).unshift(...extra);
+    }
     return order.filter(pos => byPos[pos]?.length).map(pos => byPos[pos]);
   };
   const dots = (team, side, color) => {
     const rows = rowsFor(team);
+    const hasGKRow = rows.length > 0 && rows[0][0].position === 'arquero' && rows[0].length === 1;
+    const field = hasGKRow ? rows.slice(1) : rows;
+    // Arco en x=7; el resto de las líneas se reparte entre 18 y 44
+    const rowX = [];
+    if (hasGKRow) rowX.push(7);
+    field.forEach((_, r) => rowX.push(field.length === 1 ? 30 : 18 + (26 * r / (field.length - 1))));
     return rows.map((row, r) => {
-      const hasGK = row[0].position === 'arquero';
-      let x = rows.length === 1 ? 26 : 8 + (35 * r / (rows.length - 1));
-      if (hasGK) x = 7;
+      let x = rowX[r];
       if (side === 'B') x = 100 - x;
       return row.map((p, i) => {
         const y = 100 * (i + 1) / (row.length + 1);
