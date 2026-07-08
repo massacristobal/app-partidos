@@ -88,7 +88,187 @@ function showView(view) {
   document.querySelectorAll('.navbtn').forEach(b => b.classList.toggle('active', b.dataset.view === view));
   document.querySelectorAll('.view').forEach(v => v.classList.add('hidden'));
   $('#view-' + view).classList.remove('hidden');
-  ({ matches: renderMatches, groups: renderGroups, friends: renderFriends, ranking: renderRanking, profile: renderProfile })[view]();
+  ({
+    home: renderHome, matches: renderMatches, newmatch: renderNewMatch,
+    groups: renderGroups, friends: renderFriends, ranking: renderRanking,
+    profile: renderProfile, admin: renderAdmin
+  })[view]();
+}
+
+// ---------- Inicio ----------
+async function renderHome() {
+  const el = $('#view-home');
+  let matchesData, friendsData, groupsData;
+  try {
+    [matchesData, friendsData, groupsData] = await Promise.all([api('/matches'), api('/friends'), api('/groups')]);
+  } catch (err) { return toast(err.message, true); }
+  const matches = matchesData.matches;
+  const upcoming = matches.filter(m => !m.result);
+  const played = matches.filter(m => m.result).slice(0, 3);
+
+  const resultCard = m => {
+    const tn = m.teams ? {
+      nameA: m.teams.nameA || 'Equipo A', nameB: m.teams.nameB || 'Equipo B',
+      colorA: m.teams.colorA || '#1b5e20', colorB: m.teams.colorB || '#1a4fa0'
+    } : { nameA: 'Equipo A', nameB: 'Equipo B', colorA: '#1b5e20', colorB: '#1a4fa0' };
+    return `
+    <div class="card resultcard" data-goto="matches">
+      <p class="muted" style="margin-bottom:6px">${esc(m.title)}</p>
+      <div class="row" style="justify-content:space-around;text-align:center">
+        <div><span class="cdot" style="background:${tn.colorA}"></span> ${esc(tn.nameA)}<div class="bigscore">${m.result.scoreA}</div></div>
+        <span class="muted">vs</span>
+        <div><span class="cdot" style="background:${tn.colorB}"></span> ${esc(tn.nameB)}<div class="bigscore">${m.result.scoreB}</div></div>
+      </div>
+      ${m.result.mvp && m.teams ? `<p class="muted" style="text-align:center;margin-top:4px">🏅 MVP: ${esc(([...m.teams.A, ...m.teams.B].find(p => p.id === m.result.mvp) || {}).name || '')}</p>` : ''}
+    </div>`;
+  };
+
+  el.innerHTML = `
+    <h2 class="hello">¡Hola, ${esc(me.displayName.split(/\s+/)[0])}! 👋</h2>
+    <p class="muted" style="margin-bottom:14px">Arma equipos parejos con tus amigos</p>
+    <div class="statgrid">
+      <div class="stat" data-goto="friends"><span class="stat-ico">👥</span><div class="stat-n">${friendsData.friends.length}</div><div class="muted">Amigos</div></div>
+      <div class="stat" data-goto="groups"><span class="stat-ico">🏟️</span><div class="stat-n">${groupsData.groups.length}</div><div class="muted">Grupos</div></div>
+      <div class="stat" data-goto="matches"><span class="stat-ico">📅</span><div class="stat-n">${upcoming.length}</div><div class="muted">Por jugar</div></div>
+    </div>
+    <div class="cta" id="homeCreate">
+      <div><strong>Crear partido</strong><br><span style="opacity:.85">Selecciona jugadores y arma los equipos</span></div>
+      <span class="cta-plus">＋</span>
+    </div>
+    ${upcoming.length ? `
+      <h3 class="hsec">📅 Próximos partidos</h3>
+      ${upcoming.slice(0, 3).map(m => `
+        <div class="card resultcard" data-goto="matches">
+          <div class="row between">
+            <strong>${esc(m.title)}</strong>
+            <span class="pill">${m.players.length}/${m.perSide * 2} jugadores</span>
+          </div>
+          <p class="muted" style="margin-top:4px">
+            ${m.date ? '🗓️ ' + esc(m.date.replace('T', ' ')) + ' · ' : ''}${m.place ? '📍 ' + esc(m.place) : ''}
+            ${m.costPerPerson ? ' · 💰 $' + m.costPerPerson + ' p/p' : ''}
+          </p>
+        </div>`).join('')}` : ''}
+    ${played.length ? `<h3 class="hsec">🏆 Últimos resultados</h3>${played.map(resultCard).join('')}` : ''}`;
+
+  $('#homeCreate').onclick = () => showView('newmatch');
+  el.querySelectorAll('[data-goto]').forEach(x => x.onclick = () => showView(x.dataset.goto));
+}
+
+// ---------- Nuevo partido ----------
+async function renderNewMatch() {
+  const el = $('#view-newmatch');
+  let friendsData, groupsData, matchesData;
+  try {
+    [friendsData, groupsData, matchesData] = await Promise.all([api('/friends'), api('/groups'), api('/matches')]);
+  } catch (err) { return toast(err.message, true); }
+  const friends = friendsData.friends;
+  const groups = groupsData.groups;
+  // Lugares usados antes, para sugerirlos primero
+  const knownPlaces = [...new Set(matchesData.matches.map(m => m.place).filter(Boolean))];
+  const selected = new Set();
+
+  el.innerHTML = `
+    <p><a href="#" id="nmBack" style="color:var(--green-dark);font-weight:600;text-decoration:none">← Volver</a></p>
+    <h2 class="hello" style="margin-bottom:12px">Nuevo partido</h2>
+    <div class="card">
+      <form id="nmForm" onsubmit="return false">
+        <input id="nmTitle" placeholder="Título (ej: Pichanga del viernes)" value="Partido entre amigos">
+        <div class="row">
+          <input id="nmDate" type="datetime-local" style="flex:1;min-width:170px">
+          <select id="nmPerSide" style="flex:1">
+            ${[3,4,5,6,7,8,9,10,11].map(n => `<option value="${n}" ${n === 5 ? 'selected' : ''}>${n} vs ${n}</option>`).join('')}
+          </select>
+        </div>
+        <div style="position:relative">
+          <input id="nmPlace" placeholder="Lugar (escribe para buscar 📍)" autocomplete="off">
+          <div id="nmPlaceSug" class="suggestions hidden"></div>
+        </div>
+        <div class="row">
+          <input id="nmCost" type="number" min="0" placeholder="💰 Valor por persona ($)" style="flex:1">
+          <select id="nmGroup" style="flex:1">
+            <option value="">Sin grupo</option>
+            ${groups.map(g => `<option value="${g.id}">${esc(g.name)}</option>`).join('')}
+          </select>
+        </div>
+      </form>
+    </div>
+    <div class="card">
+      <div class="row between"><h2>Selecciona jugadores</h2><span class="muted" id="nmCount">0 elegidos</span></div>
+      <div id="nmPlayers"></div>
+    </div>
+    <button class="btn primary" id="nmCreate" style="width:100%;padding:14px;font-size:16px">⚽ Crear partido</button>`;
+
+  $('#nmBack').onclick = e => { e.preventDefault(); showView('matches'); };
+
+  // Lista de jugadores seleccionables (amigos + miembros del grupo elegido)
+  function candidates() {
+    const pool = [...friends];
+    const gid = $('#nmGroup').value;
+    if (gid) {
+      const g = groups.find(x => x.id === gid);
+      if (g) g.members.forEach(gm => { if (gm.id !== me.id && !pool.some(p => p.id === gm.id)) pool.push(gm); });
+    }
+    return pool;
+  }
+  function renderPlayerList() {
+    const pool = candidates();
+    [...selected].forEach(id => { if (!pool.some(p => p.id === id)) selected.delete(id); });
+    $('#nmPlayers').innerHTML = pool.length ? pool.map(p => `
+      <div class="selrow ${selected.has(p.id) ? 'on' : ''}" data-sel="${p.id}">
+        <span class="selmark">${selected.has(p.id) ? '✓' : POS_ICON[p.position] || '·'}</span>
+        <div>
+          <strong>${esc(p.displayName)}</strong>${p.isGuest ? ' <span class="pill blue">invitado</span>' : ''}
+          <div class="muted">${POS_LABEL[p.position] || p.position} · ⭐ ${p.rating}</div>
+        </div>
+      </div>`).join('') : '<p class="muted">No tienes amigos aún — agrégalos en la pestaña Amigos.</p>';
+    $('#nmCount').textContent = selected.size + ' elegidos';
+    el.querySelectorAll('[data-sel]').forEach(row => row.onclick = () => {
+      const id = row.dataset.sel;
+      selected.has(id) ? selected.delete(id) : selected.add(id);
+      renderPlayerList();
+    });
+  }
+  renderPlayerList();
+  $('#nmGroup').onchange = renderPlayerList;
+
+  // Autocompletado de lugar: lugares ya usados + OpenStreetMap (se abre en Google Maps)
+  const sug = $('#nmPlaceSug');
+  let sugTimer = null;
+  $('#nmPlace').oninput = () => {
+    const q = $('#nmPlace').value.trim();
+    clearTimeout(sugTimer);
+    if (q.length < 3) { sug.classList.add('hidden'); return; }
+    sugTimer = setTimeout(async () => {
+      const known = knownPlaces.filter(p => p.toLowerCase().includes(q.toLowerCase())).slice(0, 3);
+      let remote = [];
+      try {
+        const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=4&accept-language=es&q=${encodeURIComponent(q)}`);
+        if (r.ok) remote = (await r.json()).map(x => x.display_name);
+      } catch {}
+      const opts = [...new Set([...known, ...remote])].slice(0, 6);
+      if (!opts.length) { sug.classList.add('hidden'); return; }
+      sug.innerHTML = opts.map(o => `<div class="sugitem">📍 ${esc(o)}</div>`).join('');
+      sug.classList.remove('hidden');
+      sug.querySelectorAll('.sugitem').forEach(item => item.onclick = () => {
+        $('#nmPlace').value = item.textContent.replace('📍 ', '').trim();
+        sug.classList.add('hidden');
+      });
+    }, 450);
+  };
+  document.addEventListener('click', e => { if (!sug.contains(e.target) && e.target !== $('#nmPlace')) sug.classList.add('hidden'); }, { once: true });
+
+  $('#nmCreate').onclick = async () => {
+    try {
+      await api('/matches', 'POST', {
+        title: $('#nmTitle').value, place: $('#nmPlace').value, date: $('#nmDate').value,
+        perSide: $('#nmPerSide').value, groupId: $('#nmGroup').value || null,
+        costPerPerson: $('#nmCost').value || null,
+        playerIds: [...selected]
+      });
+      toast(`Partido creado con ${selected.size + 1} jugadores ⚽`);
+      showView('matches');
+    } catch (err) { toast(err.message, true); }
+  };
 }
 
 // ---------- Perfil ----------
@@ -126,63 +306,13 @@ async function renderProfile() {
         <input id="passNew" type="password" placeholder="Nueva contraseña (mínimo 4)" autocomplete="new-password" required>
         <button class="btn primary">Cambiar contraseña</button>
       </form>
-    </div>
-    ${me.isAdmin ? `
-    <div class="card">
-      <h2>🔑 Administrador: resetear contraseña</h2>
-      <p class="muted" style="margin-bottom:8px">Para cuando alguien olvida su clave: asígnale una temporal y pídele que la cambie al entrar.</p>
-      <form id="resetForm" class="row">
-        <input id="resetUser" placeholder="Usuario" style="flex:1" required>
-        <input id="resetPass" placeholder="Contraseña temporal" style="flex:1" required>
-        <button class="btn primary">Resetear</button>
-      </form>
-      <p class="muted" style="margin:12px 0 6px">Ajustar puntos de un jugador (cuentas por usuario; invitados por su nombre):</p>
-      <form id="pointsForm" class="row">
-        <input id="pointsUser" placeholder="Usuario o nombre de invitado" style="flex:1" required>
-        <input id="pointsValue" type="number" min="0" placeholder="Puntos" style="width:110px" required>
-        <button class="btn primary">Guardar</button>
-      </form>
-      <p class="muted" style="margin:12px 0 6px">Eliminar usuario (se quita de amigos, grupos y partidos; sus partidos jugados quedan como historial):</p>
-      <form id="deleteUserForm" class="row">
-        <input id="deleteUserName" placeholder="Email, usuario o nombre de invitado" style="flex:1" required>
-        <button class="btn danger">Eliminar</button>
-      </form>
-    </div>` : ''}`;
+    </div>`;
   $('#passForm').onsubmit = async e => {
     e.preventDefault();
     try {
       await api('/me/password', 'PUT', { current: $('#passCurrent').value, next: $('#passNew').value });
       toast('Contraseña cambiada ✓');
       $('#passCurrent').value = ''; $('#passNew').value = '';
-    } catch (err) { toast(err.message, true); }
-  };
-  const rf = $('#resetForm');
-  if (rf) rf.onsubmit = async e => {
-    e.preventDefault();
-    try {
-      await api('/admin/reset-password', 'POST', { username: $('#resetUser').value, newPassword: $('#resetPass').value });
-      toast('Contraseña reseteada ✓');
-      $('#resetUser').value = ''; $('#resetPass').value = '';
-    } catch (err) { toast(err.message, true); }
-  };
-  const df = $('#deleteUserForm');
-  if (df) df.onsubmit = async e => {
-    e.preventDefault();
-    const who = $('#deleteUserName').value.trim();
-    if (!confirm(`¿Eliminar a "${who}"?\nSe quitará de amigos, grupos y partidos pendientes. Esta acción no se puede deshacer.`)) return;
-    try {
-      const r = await api('/admin/delete-user', 'POST', { username: who });
-      toast(`${r.deleted} eliminado 🗑️`);
-      $('#deleteUserName').value = '';
-    } catch (err) { toast(err.message, true); }
-  };
-  const pf = $('#pointsForm');
-  if (pf) pf.onsubmit = async e => {
-    e.preventDefault();
-    try {
-      const r = await api('/admin/set-points', 'POST', { username: $('#pointsUser').value, points: $('#pointsValue').value });
-      toast(`${r.user.displayName} ahora tiene ${r.user.points} pts ✓`);
-      $('#pointsUser').value = ''; $('#pointsValue').value = '';
     } catch (err) { toast(err.message, true); }
   };
   $('#profileForm').onsubmit = async e => {
@@ -192,10 +322,68 @@ async function renderProfile() {
         displayName: $('#profName').value, position: $('#profPosition').value,
         foot: $('#profFoot').value, email: $('#profEmail').value
       });
-      me = data.user;
+      me = { ...me, ...data.user };
       $('#userBadge').textContent = me.displayName;
       toast('Perfil guardado ✓');
       renderProfile();
+    } catch (err) { toast(err.message, true); }
+  };
+}
+
+// ---------- Administrador ----------
+async function renderAdmin() {
+  const el = $('#view-admin');
+  el.innerHTML = `
+    <div class="card">
+      <h2>🔑 Resetear contraseña</h2>
+      <p class="muted" style="margin-bottom:8px">Para cuando alguien olvida su clave: asígnale una temporal y pídele que la cambie al entrar.</p>
+      <form id="resetForm" class="row">
+        <input id="resetUser" placeholder="Email o usuario" style="flex:1" required>
+        <input id="resetPass" placeholder="Contraseña temporal" style="flex:1" required>
+        <button class="btn primary">Resetear</button>
+      </form>
+    </div>
+    <div class="card">
+      <h2>🏆 Ajustar puntos</h2>
+      <p class="muted" style="margin-bottom:8px">Cuentas por email o usuario; invitados por su nombre.</p>
+      <form id="pointsForm" class="row">
+        <input id="pointsUser" placeholder="Email, usuario o nombre de invitado" style="flex:1" required>
+        <input id="pointsValue" type="number" min="0" placeholder="Puntos" style="width:110px" required>
+        <button class="btn primary">Guardar</button>
+      </form>
+    </div>
+    <div class="card">
+      <h2>🗑️ Eliminar usuario</h2>
+      <p class="muted" style="margin-bottom:8px">Se quita de amigos, grupos y partidos pendientes; sus partidos jugados quedan como historial. No se puede deshacer.</p>
+      <form id="deleteUserForm" class="row">
+        <input id="deleteUserName" placeholder="Email, usuario o nombre de invitado" style="flex:1" required>
+        <button class="btn danger">Eliminar</button>
+      </form>
+    </div>`;
+  $('#resetForm').onsubmit = async e => {
+    e.preventDefault();
+    try {
+      await api('/admin/reset-password', 'POST', { username: $('#resetUser').value, newPassword: $('#resetPass').value });
+      toast('Contraseña reseteada ✓');
+      $('#resetUser').value = ''; $('#resetPass').value = '';
+    } catch (err) { toast(err.message, true); }
+  };
+  $('#pointsForm').onsubmit = async e => {
+    e.preventDefault();
+    try {
+      const r = await api('/admin/set-points', 'POST', { username: $('#pointsUser').value, points: $('#pointsValue').value });
+      toast(`${r.user.displayName} ahora tiene ${r.user.points} pts ✓`);
+      $('#pointsUser').value = ''; $('#pointsValue').value = '';
+    } catch (err) { toast(err.message, true); }
+  };
+  $('#deleteUserForm').onsubmit = async e => {
+    e.preventDefault();
+    const who = $('#deleteUserName').value.trim();
+    if (!confirm(`¿Eliminar a "${who}"?\nSe quitará de amigos, grupos y partidos pendientes. Esta acción no se puede deshacer.`)) return;
+    try {
+      const r = await api('/admin/delete-user', 'POST', { username: who });
+      toast(`${r.deleted} eliminado 🗑️`);
+      $('#deleteUserName').value = '';
     } catch (err) { toast(err.message, true); }
   };
 }
@@ -210,7 +398,7 @@ async function renderFriends() {
     <div class="card">
       <h2>Buscar jugadores</h2>
       <div class="row">
-        <input id="searchInput" placeholder="Buscar por usuario o nombre..." style="flex:1">
+        <input id="searchInput" placeholder="Buscar por nombre o email..." style="flex:1">
         <button id="searchBtn" class="btn primary">Buscar</button>
       </div>
       <div id="searchResults"></div>
@@ -282,7 +470,7 @@ async function renderFriends() {
     catch (err) { toast(err.message, true); }
   });
   el.querySelectorAll('[data-link]').forEach(b => b.onclick = async () => {
-    const username = prompt('¿A qué usuario registrado quieres vincular este jugador?\nEscribe su nombre de usuario:');
+    const username = prompt('¿A qué cuenta quieres vincular este jugador?\nEscribe su email o usuario:');
     if (!username) return;
     try {
       const r = await api(`/guests/${b.dataset.link}/link`, 'POST', { username: username.trim() });
@@ -389,31 +577,14 @@ async function renderMatches() {
   const groups = groupsData.groups;
 
   el.innerHTML = `
-    <div class="card">
-      <h2>Crear partido</h2>
-      <form id="newMatchForm">
-        <div class="row">
-          <input id="mTitle" placeholder="Título (ej: Pichanga del viernes)" style="flex:2" required>
-          <input id="mPlace" placeholder="Lugar" style="flex:1">
-        </div>
-        <div class="row">
-          <input id="mDate" type="datetime-local" style="flex:1">
-          <select id="mPerSide" style="flex:1">
-            ${[3,4,5,6,7,8,9,10,11].map(n => `<option value="${n}" ${n === 5 ? 'selected' : ''}>${n} por lado (${n} vs ${n})</option>`).join('')}
-          </select>
-          <select id="mGroup" style="flex:1">
-            <option value="">Sin grupo</option>
-            ${groups.map(g => `<option value="${g.id}">${esc(g.name)}</option>`).join('')}
-          </select>
-          <button class="btn primary">Crear</button>
-        </div>
-      </form>
+    <div class="cta" id="matchesCreate" style="margin-top:0">
+      <div><strong>Crear partido</strong><br><span style="opacity:.85">Selecciona jugadores y arma los equipos</span></div>
+      <span class="cta-plus">＋</span>
     </div>
     <div id="matchList">
       ${(() => {
         const active = data.matches.filter(m => !m.result);
         const played = data.matches.filter(m => m.result);
-        // Recordatorio: partidos que empezaron hace más de 1:30 sin resultado registrado
         const pendingResult = active.filter(m => m.isCreator && m.teams && m.date &&
           Date.now() > Date.parse(m.date) + 90 * 60000);
         return `
@@ -432,25 +603,14 @@ async function renderMatches() {
       })()}
     </div>`;
 
-  $('#newMatchForm').onsubmit = async e => {
-    e.preventDefault();
-    try {
-      await api('/matches', 'POST', {
-        title: $('#mTitle').value, place: $('#mPlace').value, date: $('#mDate').value,
-        perSide: $('#mPerSide').value, groupId: $('#mGroup').value || null
-      });
-      toast('Partido creado ✓'); renderMatches();
-    } catch (err) { toast(err.message, true); }
-  };
+  $('#matchesCreate').onclick = () => showView('newmatch');
 
-  // Colapsar/expandir historial
   const ht = $('#historyToggle');
   if (ht) ht.onclick = () => {
     historyOpen = !historyOpen;
     $('#historyList').classList.toggle('hidden', !historyOpen);
     ht.innerHTML = ht.innerHTML.replace(historyOpen ? '▸' : '▾', historyOpen ? '▾' : '▸');
   };
-  // Colapsar/expandir cada partido
   el.querySelectorAll('[data-toggle]').forEach(h => h.onclick = () => {
     const id = h.dataset.toggle;
     const body = document.getElementById('mbody-' + id);
@@ -478,12 +638,6 @@ async function renderMatches() {
         } else if (action === 'move') {
           await api(`/matches/${mid}/move`, 'POST', { playerId: btn.dataset.player });
           toast('Cambio hecho ⇄');
-        } else if (action === 'result') {
-          const a = el.querySelector(`input[data-scorea="${mid}"]`).value;
-          const b = el.querySelector(`input[data-scoreb="${mid}"]`).value;
-          const mvpSel = el.querySelector(`select[data-mvp="${mid}"]`);
-          await api(`/matches/${mid}/result`, 'POST', { scoreA: a, scoreB: b, mvpId: mvpSel ? (mvpSel.value || null) : null });
-          toast('Resultado registrado 🏆 Puntos repartidos');
         } else if (action === 'editToggle') {
           document.getElementById('editForm-' + mid).classList.toggle('hidden');
           return; // sin recargar la vista
@@ -492,7 +646,8 @@ async function renderMatches() {
             title: el.querySelector(`input[data-etitle="${mid}"]`).value,
             place: el.querySelector(`input[data-eplace="${mid}"]`).value,
             date: el.querySelector(`input[data-edate="${mid}"]`).value,
-            perSide: el.querySelector(`select[data-eperside="${mid}"]`).value
+            perSide: el.querySelector(`select[data-eperside="${mid}"]`).value,
+            costPerPerson: el.querySelector(`input[data-ecost="${mid}"]`).value || null
           });
           toast('Partido actualizado ✓');
         } else if (action === 'teamsinfo') {
@@ -511,6 +666,12 @@ async function renderMatches() {
           if (!confirm(msg)) return;
           await api(`/matches/${mid}`, 'DELETE');
           toast('Partido eliminado 🗑️');
+        } else if (action === 'result') {
+          const a = el.querySelector(`input[data-scorea="${mid}"]`).value;
+          const b = el.querySelector(`input[data-scoreb="${mid}"]`).value;
+          const mvpSel = el.querySelector(`select[data-mvp="${mid}"]`);
+          await api(`/matches/${mid}/result`, 'POST', { scoreA: a, scoreB: b, mvpId: mvpSel ? (mvpSel.value || null) : null });
+          toast('Resultado registrado 🏆 Puntos repartidos');
         }
         renderMatches();
       } catch (err) { toast(err.message, true); }
@@ -526,12 +687,9 @@ function pitchHTML(teams) {
     team.forEach(p => (byPos[p.position || 'medio'] ||= []).push(p));
     return order.filter(pos => byPos[pos]?.length).map(pos => byPos[pos]);
   };
-  // x fijo por línea (lado A); B se espeja
-  const X = { 0: 8, 1: 20, 2: 32, 3: 43 };
   const dots = (team, side, color) => {
     const rows = rowsFor(team);
     return rows.map((row, r) => {
-      // El arquero siempre pegado al arco; el resto se reparte
       const hasGK = row[0].position === 'arquero';
       let x = rows.length === 1 ? 26 : 8 + (35 * r / (rows.length - 1));
       if (hasGK) x = 7;
@@ -556,7 +714,6 @@ function pitchHTML(teams) {
 function matchCard(m, friends, groups) {
   const myInvite = m.invites.find(i => i.user.id === me.id && i.status === 'pending');
   const group = m.groupId ? groups.find(g => g.id === m.groupId) : null;
-  // Candidatos a invitar: amigos + miembros del grupo, sin duplicados, que no estén ya
   const pool = [...friends];
   if (group) group.members.forEach(gm => { if (!pool.some(p => p.id === gm.id)) pool.push(gm); });
   const invitable = pool.filter(f => f.id !== me.id &&
@@ -570,7 +727,6 @@ function matchCard(m, friends, groups) {
     : m.teams ? '<span class="pill amber">Equipos listos</span>'
     : '<span class="pill">Convocando</span>';
   const spots = m.perSide * 2;
-
   const open = cardOpen[m.id] ?? !m.result;
   const tn = m.teams ? {
     nameA: m.teams.nameA || 'Equipo A', nameB: m.teams.nameB || 'Equipo B',
@@ -589,13 +745,14 @@ function matchCard(m, friends, groups) {
     </div>
     <p class="muted">
       ${m.place ? `<a href="${mapsLink(m.place)}" target="_blank" rel="noopener" style="color:var(--green-dark)">📍 ${esc(m.place)}</a> · ` : ''}${m.date ? '🗓️ ' + esc(m.date.replace('T', ' ')) + ' · ' : ''}
-      ⚽ ${m.perSide} vs ${m.perSide}
+      ⚽ ${m.perSide} vs ${m.perSide}${m.costPerPerson ? ` · 💰 $${m.costPerPerson} por persona` : ''}
     </p>
     ${m.isCreator && !m.result ? `
     <div class="row hidden" id="editForm-${m.id}" style="margin-top:6px">
       <input data-etitle="${m.id}" value="${esc(m.title)}" placeholder="Título" style="flex:2">
       <input data-eplace="${m.id}" value="${esc(m.place || '')}" placeholder="Lugar" style="flex:1">
       <input data-edate="${m.id}" type="datetime-local" value="${esc(m.date || '')}" style="flex:1">
+      <input data-ecost="${m.id}" type="number" min="0" value="${m.costPerPerson || ''}" placeholder="💰 $ p/p" style="width:110px">
       <select data-eperside="${m.id}">
         ${[2,3,4,5,6,7,8,9,10,11].map(n => `<option value="${n}" ${n === m.perSide ? 'selected' : ''}>${n} vs ${n}</option>`).join('')}
       </select>
@@ -633,14 +790,14 @@ function matchCard(m, friends, groups) {
           <h4><span class="cdot" style="background:${tn.colorA}"></span> ${esc(tn.nameA)} <span class="muted">(${m.teams.scoreA})</span></h4>
           <ul>${m.teams.A.map(p => `<li><span>${esc(p.name)}</span><span class="row">
             <span class="muted">${POS_ICON[p.position] || ''} ⭐${p.rating}</span>
-            ${m.isCreator && !m.result ? `<button class="swapbtn" title="Mover al equipo B" data-action="move" data-match="${m.id}" data-player="${p.id}">⇄</button>` : ''}
+            ${m.isCreator && !m.result ? `<button class="swapbtn" title="Mover al otro equipo" data-action="move" data-match="${m.id}" data-player="${p.id}">⇄</button>` : ''}
           </span></li>`).join('')}</ul>
         </div>
         <div class="team b" style="border-color:${tn.colorB}44">
           <h4><span class="cdot" style="background:${tn.colorB}"></span> ${esc(tn.nameB)} <span class="muted">(${m.teams.scoreB})</span></h4>
           <ul>${m.teams.B.map(p => `<li><span>${esc(p.name)}</span><span class="row">
             <span class="muted">${POS_ICON[p.position] || ''} ⭐${p.rating}</span>
-            ${m.isCreator && !m.result ? `<button class="swapbtn" title="Mover al equipo A" data-action="move" data-match="${m.id}" data-player="${p.id}">⇄</button>` : ''}
+            ${m.isCreator && !m.result ? `<button class="swapbtn" title="Mover al otro equipo" data-action="move" data-match="${m.id}" data-player="${p.id}">⇄</button>` : ''}
           </span></li>`).join('')}</ul>
         </div>
       </div>
@@ -694,9 +851,13 @@ async function renderRanking(groupId = '') {
       ${ranking.map((r, i) => `
         <div class="list-item">
           <span>${medals[i] || (i + 1) + '.'} ${playerTag(r)} ${r.id === me.id ? '<span class="pill">tú</span>' : ''}</span>
-          <span class="row"><span class="pill">⭐ ${r.rating}</span><span class="pill amber">🏆 ${r.points} pts</span></span>
+          <span class="row">
+            <span class="pill">PJ ${r.played}</span>
+            <span class="pill wdl">✅ ${r.wins} · ➖ ${r.draws} · ❌ ${r.losses}</span>
+            <span class="pill amber">🏆 ${r.points} pts</span>
+          </span>
         </div>`).join('')}
-      <p class="muted" style="margin-top:10px">Victoria +3 · Empate +1 · MVP +1 · Los puntos suben tu rating para el balanceo.</p>
+      <p class="muted" style="margin-top:10px">PJ = partidos jugados · Victoria +3 · Empate +1 · MVP +1 · Los puntos suben tu rating para el balanceo.</p>
     </div>`;
     $('#rankScope').onchange = e => renderRanking(e.target.value);
   } catch (err) { toast(err.message, true); }
@@ -728,8 +889,9 @@ async function boot() {
       $('#authScreen').classList.add('hidden');
       $('#mainScreen').classList.remove('hidden');
       $('#userBadge').textContent = me.displayName;
+      $('#navAdmin').classList.toggle('hidden', !me.isAdmin);
       await applyPendingJoin();
-      showView('matches');
+      showView('home');
       return;
     } catch {
       token = null; localStorage.removeItem('token');
@@ -742,4 +904,4 @@ async function boot() {
   }
 }
 boot();
-// v2
+// v5

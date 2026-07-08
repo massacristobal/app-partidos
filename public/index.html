@@ -54,18 +54,23 @@
       <button id="logoutBtn" class="btn small">Salir</button>
     </header>
     <nav>
-      <button class="navbtn active" data-view="matches">Partidos</button>
+      <button class="navbtn active" data-view="home">Inicio</button>
+      <button class="navbtn" data-view="matches">Partidos</button>
       <button class="navbtn" data-view="groups">Grupos</button>
       <button class="navbtn" data-view="friends">Amigos</button>
       <button class="navbtn" data-view="ranking">Ranking</button>
       <button class="navbtn" data-view="profile">Mi perfil</button>
+      <button class="navbtn hidden" id="navAdmin" data-view="admin">🔑 Admin</button>
     </nav>
     <main>
-      <section id="view-matches" class="view"></section>
+      <section id="view-home" class="view"></section>
+      <section id="view-matches" class="view hidden"></section>
+      <section id="view-newmatch" class="view hidden"></section>
       <section id="view-groups" class="view hidden"></section>
       <section id="view-friends" class="view hidden"></section>
       <section id="view-ranking" class="view hidden"></section>
       <section id="view-profile" class="view hidden"></section>
+      <section id="view-admin" class="view hidden"></section>
     </main>
   </div>
   <div id="toast" class="toast hidden"></div>
@@ -73,4 +78,4 @@
 <script src="app.js"></script>
 </body>
 </html>
-<!-- v2 -->
+<!-- v5 -->

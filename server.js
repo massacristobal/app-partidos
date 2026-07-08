@@ -428,6 +428,7 @@ function matchView(db, m, userId) {
     place: m.place,
     date: m.date,
     perSide: m.perSide || 5,
+    costPerPerson: m.costPerPerson || null,
     groupId: m.groupId || null,
     groupName: group ? group.name : null,
     creator: userOf(m.creator) || { id: m.creator, username: '', displayName: 'Usuario eliminado', position: 'medio', foot: 'derecho', points: 0, rating: 0, isGuest: false, ownerId: null },
@@ -452,20 +453,31 @@ app.post('/api/matches', requireAuth, (req, res) => {
     if (!g) return res.status(400).json({ error: 'Grupo no válido' });
     gid = g.id;
   }
+  const cost = Math.round(Number(req.body?.costPerPerson));
   const m = {
     id: newId('m'),
     creator: req.userId,
     title: String(title || 'Pichanga').trim().slice(0, 60),
-    place: String(place || '').trim().slice(0, 80),
+    place: String(place || '').trim().slice(0, 120),
     date: String(date || '').slice(0, 30),
     perSide: ps,
     groupId: gid,
+    costPerPerson: Number.isFinite(cost) && cost > 0 ? cost : null,
     players: [req.userId],
     invites: [],
     teams: null,
     result: null,
     createdAt: Date.now()
   };
+  // Jugadores seleccionados al crear: entran directo (amigos, miembros del grupo o invitados propios)
+  const playerIds = Array.isArray(req.body?.playerIds) ? req.body.playerIds : [];
+  for (const pid of playerIds) {
+    const t = db.users.find(u => u.id === pid);
+    if (!t || t.id === req.userId || m.players.includes(t.id)) continue;
+    const isMyGuest = t.isGuest && t.ownerId === req.userId;
+    const sameGroup = gid && db.groups.some(g => g.id === gid && g.members.includes(t.id));
+    if (isMyGuest || sameGroup || areFriends(db, req.userId, t.id)) m.players.push(t.id);
+  }
   db.matches.push(m);
   save();
   res.json({ match: matchView(db, m, req.userId) });
@@ -485,10 +497,14 @@ app.put('/api/matches/:id', requireAuth, (req, res) => {
   if (!m) return res.status(404).json({ error: 'Partido no encontrado' });
   if (m.creator !== req.userId) return res.status(403).json({ error: 'Solo el creador puede editar el partido' });
   if (m.result) return res.status(400).json({ error: 'No se puede editar un partido finalizado' });
-  const { title, place, date, perSide } = req.body || {};
+  const { title, place, date, perSide, costPerPerson } = req.body || {};
   if (title !== undefined && String(title).trim()) m.title = String(title).trim().slice(0, 60);
-  if (place !== undefined) m.place = String(place).trim().slice(0, 80);
+  if (place !== undefined) m.place = String(place).trim().slice(0, 120);
   if (date !== undefined) m.date = String(date).slice(0, 30);
+  if (costPerPerson !== undefined) {
+    const c = Math.round(Number(costPerPerson));
+    m.costPerPerson = Number.isFinite(c) && c > 0 ? c : null;
+  }
   if (perSide !== undefined) {
     const ps = Math.round(Number(perSide));
     if (Number.isFinite(ps)) m.perSide = Math.min(11, Math.max(2, ps));
@@ -672,8 +688,23 @@ app.get('/api/ranking', requireAuth, (req, res) => {
     const mine = db.friendships.filter(f => f.status === 'accepted' && (f.from === req.userId || f.to === req.userId));
     ids = new Set([req.userId, ...mine.map(f => f.from === req.userId ? f.to : f.from)]);
   }
-  const rows = [...ids].map(id => userBrief(db.users.find(x => x.id === id)))
-    .filter(Boolean).sort((a, b) => b.points - a.points);
+  const finished = db.matches.filter(m => m.result && m.teams);
+  const rows = [...ids].map(id => {
+    const u = db.users.find(x => x.id === id);
+    if (!u) return null;
+    let wins = 0, draws = 0, losses = 0;
+    finished.forEach(m => {
+      const inA = m.teams.A.some(p => p.id === id);
+      const inB = m.teams.B.some(p => p.id === id);
+      if (!inA && !inB) return;
+      const diff = m.result.scoreA - m.result.scoreB;
+      const mine = inA ? diff : -diff;
+      if (mine > 0) wins++;
+      else if (mine === 0) draws++;
+      else losses++;
+    });
+    return { ...userBrief(u), played: wins + draws + losses, wins, draws, losses };
+  }).filter(Boolean).sort((a, b) => b.points - a.points);
   res.json({ ranking: rows, scope });
 });
 
