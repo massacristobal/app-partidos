@@ -186,6 +186,21 @@ app.get('/api/friends', requireAuth, (req, res) => {
   res.json({ friends, pendingIn, pendingOut });
 });
 
+// Administrador: ajustar los puntos de un jugador
+app.post('/api/admin/set-points', requireAuth, (req, res) => {
+  const db = load();
+  if (!isAdmin(req.user)) return res.status(403).json({ error: 'Solo el administrador puede ajustar puntos' });
+  const uname = String(req.body?.username || '').trim().toLowerCase();
+  const target = db.users.find(u => u.username === uname)
+    || db.users.find(u => u.isGuest && u.displayName.toLowerCase() === uname);
+  if (!target) return res.status(404).json({ error: 'No existe ese usuario (para invitados usa su nombre)' });
+  const pts = Math.round(Number(req.body?.points));
+  if (!Number.isFinite(pts) || pts < 0) return res.status(400).json({ error: 'Puntos inválidos' });
+  target.points = pts;
+  save();
+  res.json({ ok: true, user: userBrief(target) });
+});
+
 // ---------- INVITADOS (jugadores sin cuenta) ----------
 app.post('/api/guests', requireAuth, (req, res) => {
   const db = load();
@@ -399,6 +414,15 @@ app.put('/api/matches/:id', requireAuth, (req, res) => {
     const ps = Math.round(Number(perSide));
     if (Number.isFinite(ps)) m.perSide = Math.min(11, Math.max(2, ps));
   }
+  // Nombres y colores de los equipos (si ya fueron generados)
+  if (m.teams) {
+    const { teamAName, teamBName, teamAColor, teamBColor } = req.body || {};
+    const okColor = c => /^#[0-9a-fA-F]{6}$/.test(String(c || ''));
+    if (teamAName !== undefined && String(teamAName).trim()) m.teams.nameA = String(teamAName).trim().slice(0, 25);
+    if (teamBName !== undefined && String(teamBName).trim()) m.teams.nameB = String(teamBName).trim().slice(0, 25);
+    if (okColor(teamAColor)) m.teams.colorA = teamAColor;
+    if (okColor(teamBColor)) m.teams.colorB = teamBColor;
+  }
   save();
   res.json({ match: matchView(db, m, req.userId) });
 });
@@ -460,7 +484,13 @@ app.post('/api/matches/:id/teams', requireAuth, (req, res) => {
     .map(x => ({ A: x.teams.A.map(p => p.id), B: x.teams.B.map(p => p.id) }));
 
   const result = balanceTeams(players, history);
-  m.teams = { A: result.teamA, B: result.teamB, scoreA: result.scoreA, scoreB: result.scoreB, difference: result.difference };
+  m.teams = {
+    A: result.teamA, B: result.teamB,
+    scoreA: result.scoreA, scoreB: result.scoreB, difference: result.difference,
+    // Al regenerar se conservan nombres y colores personalizados
+    nameA: m.teams?.nameA || 'Equipo A', nameB: m.teams?.nameB || 'Equipo B',
+    colorA: m.teams?.colorA || '#1b5e20', colorB: m.teams?.colorB || '#1a4fa0'
+  };
   save();
   res.json({ match: matchView(db, m, req.userId) });
 });

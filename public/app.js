@@ -122,6 +122,12 @@ async function renderProfile() {
         <input id="resetPass" placeholder="Contraseña temporal" style="flex:1" required>
         <button class="btn primary">Resetear</button>
       </form>
+      <p class="muted" style="margin:12px 0 6px">Ajustar puntos de un jugador (cuentas por usuario; invitados por su nombre):</p>
+      <form id="pointsForm" class="row">
+        <input id="pointsUser" placeholder="Usuario o nombre de invitado" style="flex:1" required>
+        <input id="pointsValue" type="number" min="0" placeholder="Puntos" style="width:110px" required>
+        <button class="btn primary">Guardar</button>
+      </form>
     </div>` : ''}`;
   $('#passForm').onsubmit = async e => {
     e.preventDefault();
@@ -138,6 +144,15 @@ async function renderProfile() {
       await api('/admin/reset-password', 'POST', { username: $('#resetUser').value, newPassword: $('#resetPass').value });
       toast('Contraseña reseteada ✓');
       $('#resetUser').value = ''; $('#resetPass').value = '';
+    } catch (err) { toast(err.message, true); }
+  };
+  const pf = $('#pointsForm');
+  if (pf) pf.onsubmit = async e => {
+    e.preventDefault();
+    try {
+      const r = await api('/admin/set-points', 'POST', { username: $('#pointsUser').value, points: $('#pointsValue').value });
+      toast(`${r.user.displayName} ahora tiene ${r.user.points} pts ✓`);
+      $('#pointsUser').value = ''; $('#pointsValue').value = '';
     } catch (err) { toast(err.message, true); }
   };
   $('#profileForm').onsubmit = async e => {
@@ -422,6 +437,14 @@ async function renderMatches() {
             perSide: el.querySelector(`select[data-eperside="${mid}"]`).value
           });
           toast('Partido actualizado ✓');
+        } else if (action === 'teamsinfo') {
+          await api(`/matches/${mid}`, 'PUT', {
+            teamAName: el.querySelector(`input[data-tna="${mid}"]`).value,
+            teamBName: el.querySelector(`input[data-tnb="${mid}"]`).value,
+            teamAColor: el.querySelector(`input[data-tca="${mid}"]`).value,
+            teamBColor: el.querySelector(`input[data-tcb="${mid}"]`).value
+          });
+          toast('Equipos actualizados ✓');
         } else if (action === 'del') {
           const finished = btn.dataset.finished === '1';
           const msg = finished
@@ -447,7 +470,7 @@ function pitchHTML(teams) {
   };
   // x fijo por línea (lado A); B se espeja
   const X = { 0: 8, 1: 20, 2: 32, 3: 43 };
-  const dots = (team, side) => {
+  const dots = (team, side, color) => {
     const rows = rowsFor(team);
     return rows.map((row, r) => {
       // El arquero siempre pegado al arco; el resto se reparte
@@ -459,8 +482,8 @@ function pitchHTML(teams) {
         const y = 100 * (i + 1) / (row.length + 1);
         const initials = esc(p.name.split(/\s+/).map(w => w[0]).join('').slice(0, 2).toUpperCase());
         const firstName = esc(p.name.split(/\s+/)[0]);
-        return `<div class="pdot team${side}" style="left:${x.toFixed(1)}%;top:${y.toFixed(1)}%">
-          <span class="circle">${initials}</span><span class="pname">${firstName}</span>
+        return `<div class="pdot" style="left:${x.toFixed(1)}%;top:${y.toFixed(1)}%">
+          <span class="circle" style="background:${color}">${initials}</span><span class="pname">${firstName}</span>
         </div>`;
       }).join('');
     }).join('');
@@ -468,7 +491,7 @@ function pitchHTML(teams) {
   return `
     <div class="pitch">
       <div class="area left"></div><div class="area right"></div>
-      ${dots(teams.A, 'A')}${dots(teams.B, 'B')}
+      ${dots(teams.A, 'A', teams.colorA || '#1b5e20')}${dots(teams.B, 'B', teams.colorB || '#1a4fa0')}
     </div>`;
 }
 
@@ -489,6 +512,10 @@ function matchCard(m, friends, groups) {
   const spots = m.perSide * 2;
 
   const open = cardOpen[m.id] ?? !m.result;
+  const tn = m.teams ? {
+    nameA: m.teams.nameA || 'Equipo A', nameB: m.teams.nameB || 'Equipo B',
+    colorA: m.teams.colorA || '#1b5e20', colorB: m.teams.colorB || '#1a4fa0'
+  } : null;
 
   return `
   <div class="card">
@@ -542,21 +569,29 @@ function matchCard(m, friends, groups) {
     ${m.teams ? `
       ${pitchHTML(m.teams)}
       <div class="teams">
-        <div class="team">
-          <h4>🟢 Equipo A <span class="muted">(${m.teams.scoreA})</span></h4>
+        <div class="team" style="border-color:${tn.colorA}44">
+          <h4><span class="cdot" style="background:${tn.colorA}"></span> ${esc(tn.nameA)} <span class="muted">(${m.teams.scoreA})</span></h4>
           <ul>${m.teams.A.map(p => `<li><span>${esc(p.name)}</span><span class="row">
             <span class="muted">${POS_ICON[p.position] || ''} ⭐${p.rating}</span>
             ${m.isCreator && !m.result ? `<button class="swapbtn" title="Mover al equipo B" data-action="move" data-match="${m.id}" data-player="${p.id}">⇄</button>` : ''}
           </span></li>`).join('')}</ul>
         </div>
-        <div class="team b">
-          <h4>🔵 Equipo B <span class="muted">(${m.teams.scoreB})</span></h4>
+        <div class="team b" style="border-color:${tn.colorB}44">
+          <h4><span class="cdot" style="background:${tn.colorB}"></span> ${esc(tn.nameB)} <span class="muted">(${m.teams.scoreB})</span></h4>
           <ul>${m.teams.B.map(p => `<li><span>${esc(p.name)}</span><span class="row">
             <span class="muted">${POS_ICON[p.position] || ''} ⭐${p.rating}</span>
             ${m.isCreator && !m.result ? `<button class="swapbtn" title="Mover al equipo A" data-action="move" data-match="${m.id}" data-player="${p.id}">⇄</button>` : ''}
           </span></li>`).join('')}</ul>
         </div>
       </div>
+      ${m.isCreator && !m.result ? `
+      <div class="row" style="margin-top:8px;justify-content:center">
+        <input data-tna="${m.id}" value="${esc(tn.nameA)}" maxlength="25" placeholder="Nombre equipo A" style="width:130px">
+        <input type="color" data-tca="${m.id}" value="${tn.colorA}" title="Color equipo A">
+        <input data-tnb="${m.id}" value="${esc(tn.nameB)}" maxlength="25" placeholder="Nombre equipo B" style="width:130px">
+        <input type="color" data-tcb="${m.id}" value="${tn.colorB}" title="Color equipo B">
+        <button class="btn small" data-action="teamsinfo" data-match="${m.id}">💾 Equipos</button>
+      </div>` : ''}
       <p class="vs muted">Diferencia de nivel: ${m.teams.difference}${m.isCreator && !m.result ? ' · Usa ⇄ para cambios manuales' : ''}</p>
       ${m.result?.mvp ? `<p class="vs">🏅 MVP: ${esc(([...m.teams.A, ...m.teams.B].find(p => p.id === m.result.mvp) || {}).name || '')} (+1 pt)</p>` : ''}
       ${m.isCreator && !m.result ? `
