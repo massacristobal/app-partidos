@@ -16,6 +16,8 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 const POSITIONS = ['arquero', 'defensa', 'medio', 'delantero'];
+const ADMIN_USERNAME = (process.env.ADMIN_USERNAME || '').trim().toLowerCase();
+const isAdmin = u => !!ADMIN_USERNAME && u.username === ADMIN_USERNAME;
 
 function userBrief(u) {
   return u && {
@@ -69,7 +71,7 @@ app.post('/api/logout', requireAuth, (req, res) => {
 });
 
 app.get('/api/me', requireAuth, (req, res) => {
-  res.json({ user: { ...publicUser(req.user), rating: playerRating(req.user) } });
+  res.json({ user: { ...publicUser(req.user), rating: playerRating(req.user), isAdmin: isAdmin(req.user) } });
 });
 
 app.put('/api/me', requireAuth, (req, res) => {
@@ -78,6 +80,46 @@ app.put('/api/me', requireAuth, (req, res) => {
   if (POSITIONS.includes(position)) req.user.position = position;
   save();
   res.json({ user: { ...publicUser(req.user), rating: playerRating(req.user) } });
+});
+
+// Cambiar mi contraseña
+app.put('/api/me/password', requireAuth, (req, res) => {
+  const db = load();
+  const { current, next } = req.body || {};
+  if (!verifyPassword(current || '', req.user.salt, req.user.passHash)) {
+    return res.status(401).json({ error: 'La contraseña actual no es correcta' });
+  }
+  if (!next || next.length < 4) return res.status(400).json({ error: 'La nueva contraseña es muy corta (mínimo 4)' });
+  const { salt, hash } = hashPassword(next);
+  req.user.salt = salt;
+  req.user.passHash = hash;
+  // Cierra las demás sesiones de este usuario
+  const myToken = req.headers.authorization.slice(7);
+  for (const [t, s] of Object.entries(db.sessions)) {
+    if (s.userId === req.userId && t !== myToken) delete db.sessions[t];
+  }
+  save();
+  res.json({ ok: true });
+});
+
+// Administrador: resetear la contraseña de un usuario que la olvidó
+app.post('/api/admin/reset-password', requireAuth, (req, res) => {
+  const db = load();
+  if (!isAdmin(req.user)) return res.status(403).json({ error: 'Solo el administrador puede resetear contraseñas' });
+  const uname = String(req.body?.username || '').trim().toLowerCase();
+  const target = db.users.find(u => !u.isGuest && u.username === uname);
+  if (!target) return res.status(404).json({ error: 'No existe una cuenta con ese usuario' });
+  const newPassword = String(req.body?.newPassword || '');
+  if (newPassword.length < 4) return res.status(400).json({ error: 'La contraseña temporal es muy corta (mínimo 4)' });
+  const { salt, hash } = hashPassword(newPassword);
+  target.salt = salt;
+  target.passHash = hash;
+  // Cierra todas las sesiones del usuario reseteado
+  for (const [t, s] of Object.entries(db.sessions)) {
+    if (s.userId === target.id) delete db.sessions[t];
+  }
+  save();
+  res.json({ ok: true });
 });
 
 // ---------- AMIGOS ----------
@@ -445,6 +487,7 @@ app.delete('/api/matches/:id', requireAuth, (req, res) => {
     if (m.result.scoreA > m.result.scoreB) revert(idsA, 3);
     else if (m.result.scoreB > m.result.scoreA) revert(idsB, 3);
     else { revert(idsA, 1); revert(idsB, 1); }
+    if (m.result.mvp) revert([m.result.mvp], 1);
   }
   db.matches = db.matches.filter(x => x.id !== m.id);
   save();
@@ -463,7 +506,12 @@ app.post('/api/matches/:id/result', requireAuth, (req, res) => {
   const scoreB = Math.max(0, Math.round(Number(req.body?.scoreB)));
   if (!Number.isFinite(scoreA) || !Number.isFinite(scoreB)) return res.status(400).json({ error: 'Marcador inválido' });
 
-  m.result = { scoreA, scoreB, recordedAt: Date.now() };
+  const mvpId = req.body?.mvpId || null;
+  if (mvpId) {
+    const inTeams = m.teams.A.some(p => p.id === mvpId) || m.teams.B.some(p => p.id === mvpId);
+    if (!inTeams) return res.status(400).json({ error: 'El MVP debe ser un jugador del partido' });
+  }
+  m.result = { scoreA, scoreB, mvp: mvpId, recordedAt: Date.now() };
 
   // Puntos: victoria +3, empate +1, derrota 0
   const award = (ids, pts) => ids.forEach(id => {
@@ -475,6 +523,7 @@ app.post('/api/matches/:id/result', requireAuth, (req, res) => {
   if (scoreA > scoreB) { award(idsA, 3); }
   else if (scoreB > scoreA) { award(idsB, 3); }
   else { award(idsA, 1); award(idsB, 1); }
+  if (mvpId) award([mvpId], 1); // punto extra al MVP
 
   save();
   res.json({ match: matchView(db, m, req.userId) });

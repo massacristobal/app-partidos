@@ -62,8 +62,9 @@ git push -u origin main
 
    | Nombre | Valor |
    |---|---|
-   | `SUPABASE_URL` | la Project URL del paso 1 |
+   | `SUPABASE_URL` | la Project URL del paso 1 (ej: `https://abcdefgh.supabase.co`) |
    | `SUPABASE_KEY` | la service_role key del paso 1 |
+   | `ADMIN_USERNAME` | tu nombre de usuario en la app (opcional: te permite resetear contraseñas de otros desde Mi perfil) |
 
 5. Botón **Deploy Web Service**. En unos minutos tendrás una URL tipo `https://app-partidos.onrender.com`.
 

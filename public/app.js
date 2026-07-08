@@ -104,7 +104,42 @@ async function renderProfile() {
         </div>
         <button class="btn primary" style="margin-top:10px">Guardar cambios</button>
       </form>
-    </div>`;
+    </div>
+    <div class="card">
+      <h2>Cambiar contraseña</h2>
+      <form id="passForm">
+        <input id="passCurrent" type="password" placeholder="Contraseña actual" autocomplete="current-password" required>
+        <input id="passNew" type="password" placeholder="Nueva contraseña (mínimo 4)" autocomplete="new-password" required>
+        <button class="btn primary">Cambiar contraseña</button>
+      </form>
+    </div>
+    ${me.isAdmin ? `
+    <div class="card">
+      <h2>🔑 Administrador: resetear contraseña</h2>
+      <p class="muted" style="margin-bottom:8px">Para cuando alguien olvida su clave: asígnale una temporal y pídele que la cambie al entrar.</p>
+      <form id="resetForm" class="row">
+        <input id="resetUser" placeholder="Usuario" style="flex:1" required>
+        <input id="resetPass" placeholder="Contraseña temporal" style="flex:1" required>
+        <button class="btn primary">Resetear</button>
+      </form>
+    </div>` : ''}`;
+  $('#passForm').onsubmit = async e => {
+    e.preventDefault();
+    try {
+      await api('/me/password', 'PUT', { current: $('#passCurrent').value, next: $('#passNew').value });
+      toast('Contraseña cambiada ✓');
+      $('#passCurrent').value = ''; $('#passNew').value = '';
+    } catch (err) { toast(err.message, true); }
+  };
+  const rf = $('#resetForm');
+  if (rf) rf.onsubmit = async e => {
+    e.preventDefault();
+    try {
+      await api('/admin/reset-password', 'POST', { username: $('#resetUser').value, newPassword: $('#resetPass').value });
+      toast('Contraseña reseteada ✓');
+      $('#resetUser').value = ''; $('#resetPass').value = '';
+    } catch (err) { toast(err.message, true); }
+  };
   $('#profileForm').onsubmit = async e => {
     e.preventDefault();
     try {
@@ -373,7 +408,8 @@ async function renderMatches() {
         } else if (action === 'result') {
           const a = el.querySelector(`input[data-scorea="${mid}"]`).value;
           const b = el.querySelector(`input[data-scoreb="${mid}"]`).value;
-          await api(`/matches/${mid}/result`, 'POST', { scoreA: a, scoreB: b });
+          const mvpSel = el.querySelector(`select[data-mvp="${mid}"]`);
+          await api(`/matches/${mid}/result`, 'POST', { scoreA: a, scoreB: b, mvpId: mvpSel ? (mvpSel.value || null) : null });
           toast('Resultado registrado 🏆 Puntos repartidos');
         } else if (action === 'del') {
           const finished = btn.dataset.finished === '1';
@@ -500,11 +536,16 @@ function matchCard(m, friends, groups) {
         </div>
       </div>
       <p class="vs muted">Diferencia de nivel: ${m.teams.difference}${m.isCreator && !m.result ? ' · Usa ⇄ para cambios manuales' : ''}</p>
+      ${m.result?.mvp ? `<p class="vs">🏅 MVP: ${esc(([...m.teams.A, ...m.teams.B].find(p => p.id === m.result.mvp) || {}).name || '')} (+1 pt)</p>` : ''}
       ${m.isCreator && !m.result ? `
         <div class="row" style="justify-content:center">
           <input type="number" min="0" data-scorea="${m.id}" placeholder="Goles A" style="width:90px">
           <strong>vs</strong>
           <input type="number" min="0" data-scoreb="${m.id}" placeholder="Goles B" style="width:90px">
+          <select data-mvp="${m.id}">
+            <option value="">MVP (opcional)</option>
+            ${[...m.teams.A, ...m.teams.B].map(p => `<option value="${p.id}">🏅 ${esc(p.name)}</option>`).join('')}
+          </select>
           <button class="btn primary small" data-action="result" data-match="${m.id}">Registrar resultado</button>
         </div>` : ''}` : ''}
     </div>
@@ -534,7 +575,7 @@ async function renderRanking(groupId = '') {
           <span>${medals[i] || (i + 1) + '.'} ${playerTag(r)} ${r.id === me.id ? '<span class="pill">tú</span>' : ''}</span>
           <span class="row"><span class="pill">⭐ ${r.rating}</span><span class="pill amber">🏆 ${r.points} pts</span></span>
         </div>`).join('')}
-      <p class="muted" style="margin-top:10px">Victoria +3 · Empate +1 · Los puntos suben tu rating para el balanceo.</p>
+      <p class="muted" style="margin-top:10px">Victoria +3 · Empate +1 · MVP +1 · Los puntos suben tu rating para el balanceo.</p>
     </div>`;
     $('#rankScope').onchange = e => renderRanking(e.target.value);
   } catch (err) { toast(err.message, true); }
